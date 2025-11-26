@@ -74,13 +74,13 @@ jobs:
           
           mkdir -p kernel_build
           # Descargar .config
-          CONFIG_URL="https://raw.githubusercontent.com/azagramac/build-kernel/refs/heads/master/${CONFIG_INPUT}"
+          CONFIG_URL="https://raw.githubusercontent.com/azagramac/build-kernel-linux/refs/heads/master/configs/${CONFIG_INPUT}"
           echo "⬇️ Downloading config from $CONFIG_URL..."
           curl -L -o kernel_build/.config "$CONFIG_URL"
 
           # Descargar patch solo si se pasa
           if [ -n "$PATCH_INPUT" ]; then
-            PATCH_URL="https://raw.githubusercontent.com/azagramac/build-kernel/refs/heads/master/patchs/${PATCH_INPUT}"
+            PATCH_URL="https://raw.githubusercontent.com/azagramac/build-kernel-linux/refs/heads/master/patchs/${PATCH_INPUT}"
             echo "⬇️ Downloading patch from $PATCH_URL..."
             if curl -L -f -o kernel_build/patch_file.patch "$PATCH_URL"; then
               echo "✅ Patch downloaded successfully"
