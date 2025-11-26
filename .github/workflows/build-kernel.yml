@@ -76,7 +76,6 @@ jobs:
           # Descargar .config
           CONFIG_URL="https://raw.githubusercontent.com/azagramac/build-kernel/refs/heads/master/${CONFIG_INPUT}"
           echo "⬇️ Downloading config from $CONFIG_URL..."
-          make mrproper
           curl -L -o kernel_build/.config "$CONFIG_URL"
 
           # Descargar patch solo si se pasa
