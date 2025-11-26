@@ -1,0 +1,151 @@
+name: 🐧 Build linux kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      config:
+        description: '📄 Kernel config name (ej: config-6.10.7-debian12)'
+        required: true
+        default: 'config-6.10.7-debian12'
+      patch:
+        description: '🧩 Optional patch name (from patchs/ in repo)'
+        required: false
+        default: ''
+      localversion:
+        description: '📄 Local version name (ej: -custom, -local..)'
+        required: true
+        default: ''
+      tag:
+        description: '🏷️ Git tag from torvalds/linux repo (used if no URL)'
+        required: false
+        default: ''
+      url:
+        description: '📦 Kernel tarball URL (.tar.gz or .tar.xz)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧹 Clean up space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          df -h
+
+      - name: ⚙️ Install build dependencies
+        run: |
+          sudo apt update -qq
+          sudo apt install -y git build-essential fakeroot bc bison flex libelf-dev libssl-dev \
+            libncurses5-dev libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch
+
+      - name: 📥 Download kernel tarball
+        if: ${{ inputs.url != '' }}
+        id: download_tarball
+        run: |
+          FILENAME=$(basename "${{ inputs.url }}")
+          EXT="${FILENAME##*.}"
+          if [[ "$EXT" != "gz" && "$EXT" != "xz" ]]; then
+            echo "❌ Only .tar.gz or .tar.xz are allowed"
+            exit 1
+          fi
+          echo "⬇️ Downloading kernel package..."
+          curl -L -o kernel_package.tar."$EXT" "${{ inputs.url }}"
+          mkdir -p kernel_build
+          tar -xf kernel_package.tar."$EXT" -C kernel_build --strip-components=1
+          TAG=$(echo "$FILENAME" | sed -E 's/linux-([0-9]+\.[0-9]+\.[0-9]+)\.tar\.(gz|xz)/\1/')
+          echo "kernel_tag=$TAG" >> $GITHUB_ENV
+
+      - name: 📥 Clone torvalds/linux repo
+        if: ${{ inputs.url == '' }}
+        id: clone_repo
+        run: |
+          git clone --depth 1 --branch ${{ inputs.tag }} https://github.com/torvalds/linux kernel_build
+          echo "kernel_tag=${{ inputs.tag }}" >> $GITHUB_ENV
+
+      - name: 📄 Download .config and optional patch from GitHub
+        run: |
+          CONFIG_INPUT="${{ inputs.config }}"
+          PATCH_INPUT="${{ inputs.patch }}"
+          
+          mkdir -p kernel_build
+          
+          # Descargar .config
+          CONFIG_URL="https://raw.githubusercontent.com/azagramac/build-kernel/refs/heads/master/${CONFIG_INPUT}"
+          echo "⬇️ Downloading config from $CONFIG_URL..."
+          curl -L -o kernel_build/.config "$CONFIG_URL"
+
+          # Descargar patch solo si se pasa
+          if [ -n "$PATCH_INPUT" ]; then
+            PATCH_URL="https://raw.githubusercontent.com/azagramac/build-kernel/refs/heads/master/patchs/${PATCH_INPUT}"
+            echo "⬇️ Downloading patch from $PATCH_URL..."
+            if curl -L -f -o kernel_build/patch_file.patch "$PATCH_URL"; then
+              echo "✅ Patch downloaded successfully"
+            else
+              echo "⚠️ Patch $PATCH_INPUT not found, skipping..."
+            fi
+          fi
+
+      - name: 🔧 Apply kernel config
+        run: |
+          cd kernel_build
+          echo "🔧 Applying configuration..."
+          make olddefconfig
+
+      - name: 🧩 Apply patch
+        run: |
+          cd kernel_build
+          if [ -f patch_file.patch ]; then
+            echo "🔧 Applying patch patch_file.patch"
+            patch -p1 < patch_file.patch || true
+          else
+            echo "⚠️ No patch to apply, continuing build"
+          fi
+
+      - name: 🔍 Show kernel version
+        run: |
+          cd kernel_build
+          echo "🏷️ Kernel to be built: $(make kernelrelease)"
+
+      - name: 🐧 Build kernel
+        run: |
+          cd kernel_build
+          make -j$(nproc) bindeb-pkg LOCALVERSION=${{ inputs.localversion }} KDEB_PKGVERSION=1
+
+      - name: 🆔 Get compiled kernel version
+        id: get_version
+        run: |
+          cd kernel_build
+          echo "version=$(make kernelrelease)" >> $GITHUB_OUTPUT
+
+      - name: 📦 Move .deb artifacts
+        run: |
+          mkdir -p artifacts
+          find .. -name "*.deb" -exec cp {} artifacts/ \;
+          find .. -name "*.changes" -exec cp {} artifacts/ \;
+          find .. -name "*.buildinfo" -exec cp {} artifacts/ \;
+
+      - name: 📋 Read .changes for release body
+        id: release_body
+        run: |
+          CHANGES_FILE=$(find artifacts -name "*.changes" | head -n1)
+          BODY=$(cat "$CHANGES_FILE")
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: 🚀 Upload Linux Kernel
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: kernel-${{ github.run_number }}
+          name: "Kernel ${{ steps.get_version.outputs.version }}"
+          body: ${{ steps.release_body.outputs.body }}
+          files: artifacts/*.deb
+          overwrite_files: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

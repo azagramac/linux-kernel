@@ -1,0 +1,81 @@
+name: 🐧 Build Ryzen9 Linux Kernel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: self-hosted
+    env:
+      GIT_NAME: ${{ secrets.FULLNAME }}
+      GIT_MAIL: ${{ secrets.GIT_MAIL }}
+
+    steps:
+      - name: 📥 Checkout custom kernel repo
+        uses: actions/checkout@v4
+
+      - name: 🐙 Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential fakeroot wget bzip2 bc bison flex rsync \
+            libelf-dev libdw-dev libssl-dev libncurses-dev xz-utils dwarves git debhelper jq python3
+
+      - name: 🌐 Get latest stable kernel version
+        id: kernel
+        run: |
+          KERNEL_LATEST=$(curl -s https://www.kernel.org/releases.json | jq -r '.latest_stable.version')
+          KERNEL_URL=$(curl -s https://www.kernel.org/releases.json | jq -r --arg ver "$KERNEL_LATEST" '.releases[] | select(.version==$ver) | .source')
+          echo "📝 Latest stable kernel: $KERNEL_LATEST"
+          echo "🌍 Kernel source URL: $KERNEL_URL"
+          echo "KERNEL_LATEST=$KERNEL_LATEST" >> $GITHUB_ENV
+          echo "KERNEL_URL=$KERNEL_URL" >> $GITHUB_ENV
+          echo "## 🐧 Kernel Info" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔖 Version: $KERNEL_LATEST" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌐 URL: $KERNEL_URL" >> $GITHUB_STEP_SUMMARY
+
+      - name: ⬇️ Download and extract kernel
+        run: |
+          mkdir -p kernel_build
+          curl -L $KERNEL_URL | tar -xJ -C kernel_build --strip-components=1
+          echo "✅ Kernel source extracted to kernel_build/"
+
+      - name: ⚙️ Apply custom .config
+        run: cp config-6.1.0-38 kernel_build/.config
+
+      #- name: ⚡ Apply optimized Ryzen9 patch
+      #  run: |
+      #    cd kernel_build
+      #    # Verifica si el patch se puede aplicar
+      #    if patch -p1 --dry-run < ../optimized-ryzen9.patch; then
+      #      echo "✅ Patch applies cleanly, applying..."
+      #      patch -p1 < ../optimized-ryzen9.patch
+      #    else
+      #      echo "❌ Patch failed to apply, aborting."
+      #      exit 1
+      #    fi
+
+      - name: 📝 Configure git user for deb-pkg
+        run: |
+          cd kernel_build
+          git init
+          git config user.name "$GIT_NAME"
+          git config user.email "$GIT_MAIL"
+          git add -A
+          git commit -m "Initial kernel import"
+
+      - name: 🏗️ Build .deb packages
+        run: |
+          cd kernel_build
+          make olddefconfig
+          make -j$(nproc) deb-pkg LOCALVERSION=-ryzen9
+          mkdir -p ../deb-artifacts
+          cp ../*.deb ../deb-artifacts/
+          echo "🎉 Kernel DEB packages built successfully"
+
+      - name: 📦 Upload DEB artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-debs
+          path: deb-artifacts/*.deb
+          
