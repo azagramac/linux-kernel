@@ -126,7 +126,7 @@ Hardware
 | Standard  | Wi-Fi 6E (802.11ax)                         |
 | PCI ID    | `8086:2725`                                 |
 | Driver    | `iwlwifi`                                   |
-| Bluetooth | Intel AX210                                 |
+| Bluetooth | 5.3                                         |
 | USB ID    | `8087:0032`                                 |
 | Driver    | `btusb` + `btintel` (kernel modules loaded) |
 
