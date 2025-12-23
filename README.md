@@ -9,6 +9,114 @@ Last build
 
 ---
 
+Hardware
+-----------
+
+🐧 Kernel and Toolchain
+| Element             | Value               |
+| ------------------- | ------------------- |
+| Kernel              | Linux 6.18.2-ryzen9 |
+| Model               | SMP PREEMPT_DYNAMIC |
+| Base Distribution   | Debian 13           |
+| Compiler            | GCC 14.2.0          |
+| Target Architecture | Zen 3               |
+
+🔧 CPU
+| Component         | Details                                          |
+| ----------------- | ------------------------------------------------ |
+| Architecture      | x86_64                                           |
+| CPU               | AMD Ryzen 9 5950X (Vermeer)                      |
+| Cores / Threads   | 16 cores / 32 threads                            |
+| Socket            | AM4                                              |
+| Maximum Frequency | ~4.9 GHz (boost)                                 |
+| SMT               | Enabled                                          |
+| NUMA              | 1 node                                           |
+| Virtualization    | AMD-V enabled                                    |
+| L1 Cache          | 512 KiB (16×32 KiB data + 16×32 KiB instruction) |
+| L2 Cache          | 8 MiB (16×512 KiB)                               |
+| L3 Cache          | 64 MiB (2 CCDs)                                  |
+| Instruction Sets  | AVX2, FMA, AES-NI, SHA-NI, VAES, BMI1/2          |
+
+🎮 GPU
+| Component     | Details               |
+| ------------- | --------------------- |
+| GPU           | AMD Radeon RX 6950 XT |
+| Architecture  | RDNA 2 (Navi 21)      |
+| PCI ID        | 1002:73a5             |
+| Kernel Driver | `amdgpu`              |
+| DRM/KMS       | Enabled               |
+
+🧠 Memory RAM
+| Parameter      | Value                     |
+| -------------- | ------------------------- |
+| Total Capacity | 128 GB                     |
+| Configuration  | 4 × 32 GB                 |
+| Type           | DDR4                      |
+| Speed          | 3600 MT/s                 |
+| Channels       | Dual Channel              |
+| ECC            | No                        |
+| Model          | G.Skill F4-3600C18-32GTZN |
+
+🧩 Motherboard
+| Component    | Details                              |
+| ------------ | ------------------------------------ |
+| Motherboard  | Gigabyte X570 AORUS ELITE (rev. 1.0) |
+| Chipset      | AMD X570                             |
+| Manufacturer | Gigabyte Technology Co., Ltd.        |
+| BIOS         | AMI (American Megatrends)            |
+| BIOS Version | F40                                  |
+| BIOS Date    | 2025-10-28                           |
+| Boot Mode    | UEFI                                 |
+| SMBIOS       | 3.3.0                                |
+
+🔐 Trusted Platform Module (TPM)
+| Parameter         | Value                         |
+| ----------------- | ----------------------------- |
+| Type              | fTPM (Firmware TPM)           |
+| Version           | TPM 2.0                       |
+| Manufacturer      | AMD                           |
+| Implementation    | AMD CPU fTPM                  |
+| Interface         | CRB (Command Response Buffer) |
+| ACPI              | TPM2 table present            |
+| Device            | `/dev/tpm0`, `/dev/tpmrm0`    |
+| Permissions       | `tss` group                   |
+| Kernel Driver     | `tpm_crb` (built-in)          |
+| Status            | Enabled in UEFI               |
+| Compliance        | FIPS 140-2                    |
+| TPM Revision      | 1.38                          |
+| PCRs              | 24                            |
+| Input Buffer      | 1024 bytes                    |
+| Max Command Size  | 4096 bytes                    |
+| Max Response Size | 4096 bytes                    |
+| Hardware RNG      | Disabled (CRB design)         |
+
+🔊 Audio
+| Component  | Details                  |
+| ---------- | ------------------------ |
+| Sound Card | Creative Sound Blaster Z |
+| Chip       | CA0132 Sound Core3D      |
+| PCI ID     | 1102:0012                |
+| Driver     | ALSA (`snd_ca0132`)      |
+
+🌐 Network — Ethernet
+| Component  | Details            |
+| ---------- | ------------------ |
+| Controller | Intel I211 Gigabit |
+| PCI ID     | 8086:1539          |
+| Driver     | `igb`              |
+
+📡 Wi-Fi / Bluetooth
+| Component | Details             |
+| --------- | ------------------- |
+| Wi-Fi     | Intel AX210         |
+| Standard  | Wi-Fi 6E (802.11ax) |
+| PCI ID    | 8086:2725           |
+| Driver    | `iwlwifi`           |
+| Bluetooth | Intel AX210         |
+| USB ID    | 8087:0032           |
+
+---
+
 <img width="92" alt="tux" src="https://github.com/user-attachments/assets/aa76f3de-67d1-4dba-8804-14817b3727f7" /> Linux kernel
 ============
 
