@@ -57,14 +57,15 @@ Hardware
 | PCI ID        | `1002:73a5`             |
 | Kernel Driver | `amdgpu`              |
 | DRM/KMS       | Enabled               |
-| BAR           | Enabled (16 GiB)      |
 
 ### 🎮 GPU APIs
-| API    | Version | Device / Driver                      |
-| ------ | ------- | ------------------------------------ |
-| Vulkan | 1.4.318 | RADV NAVI21  |
-| OpenCL | 3.0     | OpenCL C 1.2 |
-| OpenGL | 4.6     | Mesa (assumed via `amdgpu` / RADV)   |
+| API     | Version   | Device / Driver                              |
+|--------|-----------|----------------------------------------------|
+| AMDGPU | 3.64.0    | Kernel driver for RADV NAVI21                |
+| Vulkan | 1.4.318   | RADV (Mesa 25.2.6) for AMD Radeon RX 6950 XT|
+| OpenCL | 3.0       | OpenCL C 1.2 via ROCr / RADV                 |
+| OpenGL | 4.6       | Mesa RADV 25.2.6 (Compatibility Profile)     |
+| BAR    | Enabled   | `[drm] Detected VRAM RAM=16368M, BAR=16384M`|
 
 ### 🧩 Motherboard
 | Component    | Details                              |
