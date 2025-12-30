@@ -20,7 +20,7 @@ Hardware
 | Base Distribution   | Debian 13           |
 | Compiler            | GCC 14.2.0          |
 | Target Architecture | Zen 3               |
-| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="amd_pstate=active amdgpu.ppfeaturemask=0xffffffff quiet"` |
+| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="preempt=full amd_pstate=active amdgpu.ppfeaturemask=0xffffffff quiet"` |
 
 ### 🧠 CPU
 | Component         | Details                                          |
