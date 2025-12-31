@@ -99,7 +99,6 @@ jobs:
           echo "🔧 Applying configuration..."
           scripts/config --enable IKHEADERS
           scripts/config --enable DEBUG_INFO
-          make olddefconfig
 
       - name: 🧩 Apply patch
         if: ${{ inputs.patch != '' }}
