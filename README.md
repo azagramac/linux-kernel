@@ -5,7 +5,7 @@
 Last build
 -----
 
-<img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/6fa0b692-a078-4000-862f-3f33f1632810" />
+<img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/4b48cb67-ab25-469b-8f0d-b34ce413c61b" />
 
 ---
 
