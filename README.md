@@ -15,7 +15,7 @@ Hardware
 ### 🐧 Kernel and Toolchain
 | Element             | Value               |
 | ------------------- | ------------------- |
-| Kernel              | Linux 6.18.2-ryzen9 |
+| Kernel              | Linux 7.0.0-ryzen9 |
 | Model               | SMP PREEMPT_DYNAMIC |
 | Base Distribution   | Debian 13           |
 | Compiler            | GCC 14.2.0          |
