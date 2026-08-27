@@ -264,44 +264,44 @@ jobs:
 
             MESSAGE="<b>🐧 Linux Kernel Build ✅ Success</b>
 
-🏷️ <b>Versión:</b> ${KERNEL_VERSION:-Desconocida}
+            🏷️ <b>Versión:</b> ${KERNEL_VERSION:-Desconocida}
 
-📦 <b>Ficheros:</b>
-${CLEAN_DESC}
+            📦 <b>Ficheros:</b>
+            ${CLEAN_DESC}
 
-🏷️ <b>Workflow:</b>
-🔗 <a href=\"${RUN_URL}\">Ver detalles en GitHub</a>"
+            🏷️ <b>Workflow:</b>
+            🔗 <a href=\"${RUN_URL}\">Ver detalles en GitHub</a>"
 
-          else
-            ERROR_LOG=""
-            if [ -f build.log ]; then
-              ERROR_SNIPPET=$(tail -n 12 build.log | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-              ERROR_LOG="
-📋 <b>Últimas líneas del log de error:</b>
-<pre>${ERROR_SNIPPET}</pre>"
-            fi
+                      else
+                        ERROR_LOG=""
+                        if [ -f build.log ]; then
+                          ERROR_SNIPPET=$(tail -n 12 build.log | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+                          ERROR_LOG="
+            📋 <b>Últimas líneas del log de error:</b>
+            <pre>${ERROR_SNIPPET}</pre>"
+                        fi
 
-            SRC_INFO="${INPUT_TAG}"
-            if [ -z "$SRC_INFO" ]; then
-              SRC_INFO="${INPUT_URL}"
-            fi
-            if [ -z "$SRC_INFO" ]; then
-              SRC_INFO="No especificado"
-            fi
+                        SRC_INFO="${INPUT_TAG}"
+                        if [ -z "$SRC_INFO" ]; then
+                          SRC_INFO="${INPUT_URL}"
+                        fi
+                        if [ -z "$SRC_INFO" ]; then
+                          SRC_INFO="No especificado"
+                        fi
 
-            MESSAGE="<b>🐧 Linux Kernel Build ❌ Fallido (${BUILD_STATUS^})</b>
+                        MESSAGE="<b>🐧 Linux Kernel Build ❌ Fallido (${BUILD_STATUS^})</b>
 
-⚠️ <b>Parámetros de la ejecución:</b>
- • <b>Config:</b> ${INPUT_CONFIG:-N/A}
- • <b>Origen:</b> ${SRC_INFO}
- • <b>Localversion:</b> ${INPUT_LOCALVERSION:-Ninguna}
- • <b>Parche:</b> ${INPUT_PATCH:-Ninguno}${ERROR_LOG}
+            ⚠️ <b>Parámetros de la ejecución:</b>
+            • <b>Config:</b> ${INPUT_CONFIG:-N/A}
+            • <b>Origen:</b> ${SRC_INFO}
+            • <b>Localversion:</b> ${INPUT_LOCALVERSION:-Ninguna}
+            • <b>Parche:</b> ${INPUT_PATCH:-Ninguno}${ERROR_LOG}
 
-🏷️ <b>Workflow:</b>
-🔗 <a href=\"${RUN_URL}\">Ver logs completos en GitHub Actions</a>"
-          fi
+            🏷️ <b>Workflow:</b>
+            🔗 <a href=\"${RUN_URL}\">Ver logs completos en GitHub Actions</a>"
+                      fi
 
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TELEGRAM_CHATID}" \
-            --data-urlencode "parse_mode=HTML" \
-            --data-urlencode "text=$MESSAGE" >/dev/null 2>&1
+                      curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+                        --data-urlencode "chat_id=${TELEGRAM_CHATID}" \
+                        --data-urlencode "parse_mode=HTML" \
+                        --data-urlencode "text=$MESSAGE" >/dev/null 2>&1
