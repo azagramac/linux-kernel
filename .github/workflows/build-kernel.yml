@@ -6,7 +6,7 @@ on:
       config:
         description: '📄 Kernel config name (ej: config-6.18.2-debian13 from configs/)'
         required: true
-        default: 'config-6.18.2-debian13'
+        default: 'config-6.19.11-debian13-ryzen9'
       patch:
         description: '🧩 Optional patch name (from patchs/ in repo)'
         required: false
@@ -119,7 +119,7 @@ jobs:
       - name: 🐧 Build kernel
         run: |
           cd kernel_build
-          make -j$(nproc) bindeb-pkg LOCALVERSION=${{ inputs.localversion }} KDEB_PKGVERSION=1
+          make -j$(nproc) bindeb-pkg LOCALVERSION=${{ inputs.localversion }} KDEB_PKGVERSION=1 2>&1 | tee ../build.log
 
       - name: 🆔 Get compiled kernel version
         id: get_version
@@ -222,6 +222,10 @@ jobs:
           cat release.md >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+          echo "description<<EOF" >> $GITHUB_OUTPUT
+          echo "$DESCRIPTION" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: 🚀 Upload Linux Kernel
         uses: softprops/action-gh-release@v2
         with:
@@ -240,18 +244,62 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHATID: ${{ secrets.TELEGRAM_CHATID }}
           GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REPO: ${{ github.repository }}
           BUILD_STATUS: ${{ job.status }}
           KERNEL_VERSION: ${{ steps.get_version.outputs.version }}
+          PKG_DESCRIPTION: ${{ steps.release_body.outputs.description }}
+          INPUT_CONFIG: ${{ inputs.config }}
+          INPUT_LOCALVERSION: ${{ inputs.localversion }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_URL: ${{ inputs.url }}
+          INPUT_PATCH: ${{ inputs.patch }}
         run: |
-          STATUS_EMOJI="✅"
-          if [ "$BUILD_STATUS" != "success" ]; then
-            STATUS_EMOJI="❌"
-          fi
+          RUN_URL="https://github.com/${GITHUB_REPO}/actions/runs/${GITHUB_RUN_ID}"
 
-          MESSAGE=$(printf "<b> 🐧 Linux Kernel Build %s %s</b>\n\n \
-          🏷️ <b>Versión:</b> %s\n \
-          🔗 <a href=\"https://github.com/%s/actions/runs/%s\">Ver detalles en GitHub</a>" \
-          "$STATUS_EMOJI" "${BUILD_STATUS^}" "$KERNEL_VERSION" "${{ github.repository_owner }}" "${{ github.repository }}" "$GITHUB_RUN_ID")
+          if [ "$BUILD_STATUS" = "success" ]; then
+            CLEAN_DESC=$(echo "$PKG_DESCRIPTION" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            if [ -z "$CLEAN_DESC" ]; then
+              CLEAN_DESC=" - No disponible"
+            fi
+
+            MESSAGE="<b>🐧 Linux Kernel Build ✅ Success</b>
+
+🏷️ <b>Versión:</b> ${KERNEL_VERSION:-Desconocida}
+
+📦 <b>Ficheros:</b>
+${CLEAN_DESC}
+
+🏷️ <b>Workflow:</b>
+🔗 <a href=\"${RUN_URL}\">Ver detalles en GitHub</a>"
+
+          else
+            ERROR_LOG=""
+            if [ -f build.log ]; then
+              ERROR_SNIPPET=$(tail -n 12 build.log | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+              ERROR_LOG="
+📋 <b>Últimas líneas del log de error:</b>
+<pre>${ERROR_SNIPPET}</pre>"
+            fi
+
+            SRC_INFO="${INPUT_TAG}"
+            if [ -z "$SRC_INFO" ]; then
+              SRC_INFO="${INPUT_URL}"
+            fi
+            if [ -z "$SRC_INFO" ]; then
+              SRC_INFO="No especificado"
+            fi
+
+            MESSAGE="<b>🐧 Linux Kernel Build ❌ Fallido (${BUILD_STATUS^})</b>
+
+⚠️ <b>Parámetros de la ejecución:</b>
+ • <b>Config:</b> ${INPUT_CONFIG:-N/A}
+ • <b>Origen:</b> ${SRC_INFO}
+ • <b>Localversion:</b> ${INPUT_LOCALVERSION:-Ninguna}
+ • <b>Parche:</b> ${INPUT_PATCH:-Ninguno}${ERROR_LOG}
+
+🏷️ <b>Workflow:</b>
+🔗 <a href=\"${RUN_URL}\">Ver logs completos en GitHub Actions</a>"
+          fi
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHATID}" \
