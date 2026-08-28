@@ -5,7 +5,8 @@
 Last build
 -----
 
-<img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/4b48cb67-ab25-469b-8f0d-b34ce413c61b" />
+<img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/4456cf03-678a-4c71-9002-2d85be8ec6ec" />
+
 
 ---
 
@@ -15,12 +16,12 @@ Hardware
 ### 🐧 Kernel and Toolchain
 | Element             | Value               |
 | ------------------- | ------------------- |
-| Kernel              | Linux 7.0.0-ryzen9 |
+| Kernel              | Linux 6.19.14-ryzen9 |
 | Model               | SMP PREEMPT_DYNAMIC |
 | Base Distribution   | Debian 13           |
 | Compiler            | GCC 14.2.0          |
 | Target Architecture | Zen 3               |
-| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="preempt=full amd_pstate=active amdgpu.ppfeaturemask=0xffffffff quiet"` |
+| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="quiet amdgpu.ppfeaturemask=0xffffffff zswap.enabled=1 zswap.compressor=lzo"` |
 
 ### 🧠 CPU
 | Component         | Details                                          |
