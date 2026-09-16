@@ -1,16 +1,17 @@
 ![Linux Kernel](https://img.shields.io/badge/dynamic/json?label=Linux%20Kernel&query=latest_stable.version&url=https%3A%2F%2Fwww.kernel.org%2Freleases.json&color=f5be04)
-[![Build Kernel](https://github.com/azagramac/linux-kernel/actions/workflows/build-kernel.yml/badge.svg)](https://github.com/azagramac/linux-kernel/actions)
-[![Kernel Version](https://img.shields.io/badge/Kernel-6.19.14--ryzen9-blue.svg)](https://www.kernel.org)
-[![Target CPU](https://img.shields.io/badge/Architecture-AMD%20Zen%203-orange.svg)]()
-[![Target OS](https://img.shields.io/badge/OS-Debian%2013%20Trixie-purple.svg)]()
-[![Compiler](https://img.shields.io/badge/Compiler-GCC%2014.2.0-green.svg)]()
+[![Kernel Version](https://img.shields.io/badge/Kernel-6.19.14--ryzen9-blue.svg)](https://github.com/azagramac/linux-kernel/releases)
+
+[![Target CPU](https://img.shields.io/badge/Architecture-AMD%20Zen%203-orange.svg)](https://www.amd.com/es/technologies/zen-core.html#generations)
+[![Target OS](https://img.shields.io/badge/OS-Debian%2013%20Trixie-a80030.svg)](https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/)
+[![Compiler](https://img.shields.io/badge/Compiler-GCC%2014.2.0-green.svg)](https://gcc.gnu.org/gcc-14/)
 
 ---
 
 Last build
 -----
 
-<img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/4456cf03-678a-4c71-9002-2d85be8ec6ec" />
+<img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/3bee4e0c-a4f7-45f4-9e1b-53a9b96d503e" />
+
 
 ---
 
@@ -18,7 +19,7 @@ Last build
 
 ```mermaid
 graph LR
-    A["📄 Kconfig<br/>config-6.19.14-ryzen9"] --> B["⚙️ GitHub Actions Runner<br/>(Ubuntu 24.04 LTS)"]
+    A["📄 Kconfig<br/>config-6.19.14-ryzen9"] --> B["⚙️ GitHub Actions Runner<br/>"]
     C["📦 Kernel Source 6.19.14<br/>(kernel.org)"] --> B
     B -->|"🔧 KCFLAGS='-march=znver3'"| D["🐧 make bindeb-pkg"]
     D --> E["📦 Debian .deb Packages<br/>(headers, image, dbg, libc-dev)"]
