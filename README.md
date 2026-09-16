@@ -283,7 +283,7 @@ Hardware
 | PCI ID     | `1102:0012`                |
 | Driver     | ALSA (`snd_ca0132`)      |
 | Hi-res Audio | [Enabled](https://blog.azagra.dev/linux/high-res-audio-192-khz-en-debian-13-sound-blaster-z) `32 bits / 192kHz` |
-| Speakers     | [Edifier M60](https://www.edifier.com/global/p/computer-speakers/m60)       |
+| Speakers     | [Edifier M90](https://link.amazon/B04QwlNPx)       |
 
 ### 🌐 Network — Ethernet
 | Component  | Details            |
