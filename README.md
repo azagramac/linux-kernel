@@ -1,4 +1,9 @@
 ![Linux Kernel](https://img.shields.io/badge/dynamic/json?label=Linux%20Kernel&query=latest_stable.version&url=https%3A%2F%2Fwww.kernel.org%2Freleases.json&color=f5be04)
+[![Build Kernel](https://github.com/azagramac/linux-kernel/actions/workflows/build-kernel.yml/badge.svg)](https://github.com/azagramac/linux-kernel/actions)
+[![Kernel Version](https://img.shields.io/badge/Kernel-6.19.14--ryzen9-blue.svg)](https://www.kernel.org)
+[![Target CPU](https://img.shields.io/badge/Architecture-AMD%20Zen%203-orange.svg)]()
+[![Target OS](https://img.shields.io/badge/OS-Debian%2013%20Trixie-purple.svg)]()
+[![Compiler](https://img.shields.io/badge/Compiler-GCC%2014.2.0-green.svg)]()
 
 ---
 
@@ -7,6 +12,85 @@ Last build
 
 <img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/4456cf03-678a-4c71-9002-2d85be8ec6ec" />
 
+---
+
+## 📌 Project Architecture & CI/CD Workflow
+
+```mermaid
+graph LR
+    A["📄 Kconfig<br/>config-6.19.14-ryzen9"] --> B["⚙️ GitHub Actions Runner<br/>(Ubuntu 24.04 LTS)"]
+    C["📦 Kernel Source 6.19.14<br/>(kernel.org)"] --> B
+    B -->|"🔧 KCFLAGS='-march=znver3'"| D["🐧 make bindeb-pkg"]
+    D --> E["📦 Debian .deb Packages<br/>(headers, image, dbg, libc-dev)"]
+    E --> F["🚀 GitHub Release &<br/>📲 Telegram Notification"]
+    E -->|"💻 sudo dpkg -i"| G["🖥️ Debian 13 Workstation<br/>(Ryzen 9 5950X + RX 6950 XT)"]
+
+    style A fill:#2d3748,stroke:#4a5568,color:#fff
+    style B fill:#1a202c,stroke:#319795,color:#fff
+    style C fill:#2d3748,stroke:#4a5568,color:#fff
+    style D fill:#2b6cb0,stroke:#3182ce,color:#fff
+    style E fill:#2f855a,stroke:#38a169,color:#fff
+    style F fill:#805ad5,stroke:#9f7aea,color:#fff
+    style G fill:#dd6b20,stroke:#ed8936,color:#fff
+```
+
+---
+
+## ⚡ Kernel Customization & Performance Matrix
+
+| Subsystem | Configuration / Option | Engineering Rationale |
+| :--- | :--- | :--- |
+| **Target Architecture** | `-march=znver3` (`CONFIG_X86_NATIVE_CPU=y`) | Native AVX2/BMI2 instruction optimization for AMD Zen 3 microarchitecture. |
+| **Scheduler & Preemption**| `PREEMPT_BUILD` / `PREEMPT=y` | Full kernel preemption for minimal input and audio processing latency. |
+| **Timer Frequency** | `1000 Hz` (`CONFIG_HZ_1000=y`) | High-resolution tick frequency for desktop responsiveness and frame pacing. |
+| **Tickless Kernel** | `NO_HZ_FULL=y` | Adaptive tickless kernel to eliminate periodic timer interrupts on heavy workloads. |
+| **CPU Core Sizing** | `CONFIG_NR_CPUS=32` | Hardcapped to 32 threads matching Ryzen 9 5950X, eliminating virtual CPU overhead. |
+| **CPU Frequency Scaling**| `amd-pstate` EPP (`CONFIG_X86_AMD_PSTATE=y`) | Hardware CPPC microsecond-level core frequency and voltage adjustments. |
+| **RCU Optimization** | `CONFIG_RCU_BOOST=y` / `CONFIG_RCU_NOCB_CPU=y` | RCU callback offloading and boosting to eliminate desktop micro-stuttering. |
+| **TCP Congestion** | **TCP BBR** (`CONFIG_DEFAULT_TCP_CONG="bbr"`) | Bottleneck bandwidth RTT pacing algorithm to prevent bufferbloat and latency spikes. |
+| **eBPF JIT Compiler** | `CONFIG_BPF_JIT=y` / `ALWAYS_ON` | Locked-on JIT compiler for zero-overhead packet filtering and eBPF execution. |
+| **Async Socket I/O** | `IO_URING_ZCRX=y` | Zero-copy packet reception for ultra-fast network socket I/O. |
+| **GPU Driver & Display** | `amdgpu` + Display Core `DCN 3.0` | Native RDNA 2 support, Resizable BAR (ReBAR), and OverDrive power limit unlocking. |
+| **GPU ROCm Compute** | `CONFIG_HSA_AMD=y` / `USERPTR=y` | Native AMD KFD driver for ROCm, OpenCL 3.0, and direct GPU user-pointer memory access. |
+| **Memory / Zswap** | `zswap` + `lzo` (`CONFIG_ZSWAP=y`) | In-RAM compressed swap cache matching kernel boot parameters (`zswap.compressor=lzo`). |
+| **Hugepages & Compaction**| `MADVISE` + `CONFIG_COMPACTION=y` | Background memory defragmentation and 2MB page allocation for heavy workloads. |
+| **Hung Task Diagnostics** | `CONFIG_DETECT_HUNG_TASK=y` (120s) | Automatic detection and logging of blocked or hanging kernel threads. |
+| **Stack Unwinder** | `UNWINDER_ORC=y` | Low-overhead ORC call stack unwinding for precise ftrace kernel profiling. |
+| **Hi-Res Audio Driver** | `snd_ca0132` (Sound Core3D) | Dedicated ALSA sound driver configured for 32-bit / 192 kHz high-resolution audio. |
+| **Bloat Trimming** | Disabled unused CPU/GPU/Drivers | Removed Intel/Nvidia drivers, legacy AMD SI/CIK, and unused network vendors. |
+
+---
+
+## 🔍 Post-Boot Verification & Diagnostic Commands
+
+After booting into the custom kernel, verify active optimizations using the following commands:
+
+- **Check Active TCP Congestion Control (BBR)**:
+  ```bash
+  $ sysctl net.ipv4.tcp_congestion_control
+  net.ipv4.tcp_congestion_control = bbr
+  ```
+
+- **Check AMDGPU Driver & OverDrive Status**:
+  ```bash
+  $ sudo dmesg | grep -i amdgpu
+  [    5.839374] amdgpu: Overdrive is enabled...
+  [    8.098516] amdgpu 0000:0d:00.0: amdgpu: [drm] Display Core v3.2.359 initialized on DCN 3.0
+  ```
+
+- **Check AMD P-State Scaling Driver**:
+  ```bash
+  $ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver
+  amd-pstate-epp
+  ```
+
+- **Check Active Zswap Compressor**:
+  ```bash
+  $ cat /sys/module/zswap/parameters/enabled
+  Y
+  $ cat /sys/module/zswap/parameters/compressor
+  lzo
+  ```
 
 ---
 
@@ -68,7 +152,7 @@ Hardware
 | Vulkan | 1.4.318   | RADV (Mesa 25.2.6) for AMD Radeon RX 6950 XT|
 | OpenCL | 3.0       | OpenCL C 1.2 via ROCr / RADV                 |
 | OpenGL | 4.6       | Mesa RADV 25.2.6 (Compatibility Profile)     |
-| BAR    | Enabled   | `[drm] Detected VRAM RAM=16368M, BAR=16384M`|
+| BAR    | Enabled   | *Runtime Detection*: `VRAM RAM=16368M, BAR=16384M (Resizable BAR Enabled)`|
 
 ### 🧩 Motherboard
 | Component    | Details                              |
@@ -149,6 +233,7 @@ This custom kernel build and CI/CD pipeline are specifically tuned for maximum p
 - **Timer Frequency (1000 Hz)**: Set timer frequency to `1000 Hz` (`CONFIG_HZ_1000=y`, `CONFIG_HZ=1000`) for precise event timing.
 - **Tickless Full (`NO_HZ_FULL`)**: Adaptive tickless kernel (`CONFIG_NO_HZ_FULL=y`) preventing periodic timer interrupts on heavy workloads and gaming threads.
 - **RCU Prioritization**: RCU boosting (`CONFIG_RCU_BOOST=y`) and offloading (`CONFIG_RCU_NOCB_CPU=y`) to eliminate micro-stuttering.
+- **Hi-Res Audio Driver**: Dedicated Sound Blaster Z ALSA driver (`snd_ca0132` / Sound Core3D) configured for 32-bit / 192 kHz low-jitter audio.
 
 ### 🧠 3. CPU Optimizations (AMD Ryzen 9 5950X — 16C / 32T)
 - **Native Architecture Compilation**: Target compilation set to **Zen 3** (`-march=znver3` via `KCFLAGS="-march=znver3"`, `CONFIG_X86_NATIVE_CPU=y`).
@@ -172,6 +257,7 @@ This custom kernel build and CI/CD pipeline are specifically tuned for maximum p
 
 ### 🛠️ 7. Diagnostics & CI/CD Pipeline
 - **ORC Unwinder & Hung Task Detection**: ORC stack unwinder (`CONFIG_UNWINDER_ORC=y`) and automatic 120s hung task detection (`CONFIG_DETECT_HUNG_TASK=y`).
+- **Scheduler & Lock Debugging**: Real-time scheduler statistics (`CONFIG_SCHEDSTATS=y`, `CONFIG_SCHED_INFO=y`) and lock debugging support (`CONFIG_LOCK_DEBUGGING_SUPPORT=y`).
 - **Full Tracing Suite**: `FTRACE` infrastructure (`CONFIG_FTRACE=y`, `CONFIG_FUNCTION_TRACER=y`, `CONFIG_STACK_TRACER=y`).
 - **Automated Workflow**: GitHub Actions workflow generating `.deb` packages with explicit `-march=znver3` flags and dynamic Git commit changelogs on GitHub Releases.
 
@@ -198,12 +284,38 @@ After booting into the custom kernel, verify active optimizations using the foll
   amd-pstate-epp
   ```
 
+- **Check Kernel Preemption Model (Full Preempt)**:
+  ```bash
+  $ dmesg | grep -i "preempt"
+  [    0.000000] Dynamic Preempt: full
+  ```
+
 - **Check Active Zswap Compressor**:
   ```bash
   $ cat /sys/module/zswap/parameters/enabled
   Y
   $ cat /sys/module/zswap/parameters/compressor
   lzo
+  ```
+
+- **Check eBPF JIT Compiler Status**:
+  ```bash
+  $ sysctl net.core.bpf_jit_enable
+  net.core.bpf_jit_enable = 1
+  ```
+
+- **Check ORC Stack Unwinder Status**:
+  ```bash
+  $ dmesg | grep -i "ORC"
+  [    0.000000] ORC unwinder alive
+  ```
+
+- **Check CPU Topology & 32-Thread Sizing**:
+  ```bash
+  $ lscpu | grep -E "Model name|Thread\(s\) per core|CPU\(s\):"
+  CPU(s):                32
+  Thread(s) per core:    2
+  Model name:            AMD Ryzen 9 5950X 16-Core Processor
   ```
 
 - **Extract Embedded Kernel Configuration from `.deb`**:
