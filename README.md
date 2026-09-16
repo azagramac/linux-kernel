@@ -133,6 +133,88 @@ Hardware
 
 ---
 
+## ⚡ Custom Kernel Optimizations & Performance Features (`config-6.19.14-ryzen9`)
+
+This custom kernel build and CI/CD pipeline are specifically tuned for maximum performance, minimal latency, and zero bloat on **AMD Ryzen 9 5950X (Zen 3)** and **AMD Radeon RX 6950 XT (RDNA 2)** hardware running on Debian 13.
+
+### 🧹 1. Hardware Trimming & Bloat Elimination
+- **Non-AMD CPU Support Removed**: Disabled Intel, Hygon, Centaur, and Zhaoxin CPU support (`# CONFIG_CPU_SUP_INTEL is not set`, etc.) to streamline kernel execution paths.
+- **Unused GPU Drivers Removed**: Disabled Intel i915 (`# CONFIG_DRM_I915 is not set`) and Nvidia Nouveau (`# CONFIG_DRM_NOUVEAU is not set`).
+- **Legacy AMDGPU Generations Removed**: Disabled legacy Southern Islands (`SI`) and Sea Islands (`CIK`) support (`# CONFIG_DRM_AMDGPU_SI is not set`, `# CONFIG_DRM_AMDGPU_CIK is not set`), eliminating `si_support` / `cik_support` parameter warnings in `dmesg`.
+- **Targeted Wireless & Network Drivers**: Kept strictly **`iwlwifi`** (Intel AX210) and **`igb`** (Intel I211), stripping unnecessary Realtek, Broadcom, Atheros, and Ralink wireless/ethernet drivers.
+- **Legacy Controllers Disabled**: Removed floppy, parallel ports (`PARPORT`), PCMCIA/CardBus, FireWire (IEEE1394), ISDN, and analog modems.
+
+### ⏱️ 2. Low-Latency Tuning (Gaming & High-Res Audio)
+- **Full Preemption**: Full preemptible kernel (`CONFIG_PREEMPT_BUILD=y`, `CONFIG_PREEMPT=y`) for immediate task response and minimal audio/input latency.
+- **Timer Frequency (1000 Hz)**: Set timer frequency to `1000 Hz` (`CONFIG_HZ_1000=y`, `CONFIG_HZ=1000`) for precise event timing.
+- **Tickless Full (`NO_HZ_FULL`)**: Adaptive tickless kernel (`CONFIG_NO_HZ_FULL=y`) preventing periodic timer interrupts on heavy workloads and gaming threads.
+- **RCU Prioritization**: RCU boosting (`CONFIG_RCU_BOOST=y`) and offloading (`CONFIG_RCU_NOCB_CPU=y`) to eliminate micro-stuttering.
+
+### 🧠 3. CPU Optimizations (AMD Ryzen 9 5950X — 16C / 32T)
+- **Native Architecture Compilation**: Target compilation set to **Zen 3** (`-march=znver3` via `KCFLAGS="-march=znver3"`, `CONFIG_X86_NATIVE_CPU=y`).
+- **Sized Core Count**: Sized to `CONFIG_NR_CPUS=32` matching exact hardware threads, removing virtual CPU overhead.
+- **AMD P-State Driver**: Native `amd-pstate` CPPC driver with EPP enabled (`CONFIG_X86_AMD_PSTATE=y`, `CONFIG_X86_AMD_PSTATE_UT=y`) for microsecond-level frequency scaling.
+
+### 🎮 4. GPU & Display Core (Radeon RX 6950 XT / Navi 21)
+- **Display Core (DCN 3.0)**: AMD Display Core enabled (`CONFIG_DRM_AMD_DC=y`, `CONFIG_DRM_AMD_DC_DCN=y`) optimized for Navi 21 architecture.
+- **Heterogeneous Compute (ROCm / KFD)**: AMD HSA kernel driver (`CONFIG_HSA_AMD=y`) enabled for ROCm, Vulkan, and OpenCL compute.
+- **Direct GPU Memory Access**: `CONFIG_DRM_AMDGPU_USERPTR=y` allowing GPU direct access to user space memory pointers.
+- **Resizable BAR & OverDrive**: Full 16 GB VRAM BAR access and OverDrive power limit unlocking (`amdgpu.ppfeaturemask=0xffffffff`).
+
+### 🌐 5. Networking & Congestion Control
+- **TCP BBR Default**: Configured with **TCP BBR** as the default congestion control algorithm (`CONFIG_DEFAULT_TCP_CONG="bbr"`, `CONFIG_DEFAULT_BBR=y`). Eliminates bufferbloat and maximizes bandwidth throughput.
+- **eBPF JIT Compiler**: JIT compiler enabled and locked on (`CONFIG_BPF_JIT=y`, `CONFIG_BPF_JIT_ALWAYS_ON=y`) for zero-overhead packet filtering and eBPF execution.
+- **`IO_URING_ZCRX`**: Zero-copy network reception (`CONFIG_IO_URING_ZCRX=y`) enabled for ultra-fast socket I/O.
+
+### 💾 6. Memory Tuning (Zswap `lzo`)
+- **Zswap Storage**: Native `zswap` with `lzo` compressor (`CONFIG_ZSWAP=y`, `CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO=y`) matching kernel boot parameters.
+- **Transparent Hugepages & Compaction**: Active background memory compaction (`CONFIG_COMPACTION=y`) and Transparent Hugepages (`CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y`) for heavy memory workloads.
+
+### 🛠️ 7. Diagnostics & CI/CD Pipeline
+- **ORC Unwinder & Hung Task Detection**: ORC stack unwinder (`CONFIG_UNWINDER_ORC=y`) and automatic 120s hung task detection (`CONFIG_DETECT_HUNG_TASK=y`).
+- **Full Tracing Suite**: `FTRACE` infrastructure (`CONFIG_FTRACE=y`, `CONFIG_FUNCTION_TRACER=y`, `CONFIG_STACK_TRACER=y`).
+- **Automated Workflow**: GitHub Actions workflow generating `.deb` packages with explicit `-march=znver3` flags and dynamic Git commit changelogs on GitHub Releases.
+
+### 🔍 8. Post-Boot Verification & Diagnostic Commands
+After booting into the custom kernel, verify active optimizations using the following commands:
+
+- **Check Active TCP Congestion Control (BBR)**:
+  ```bash
+  $ sysctl net.ipv4.tcp_congestion_control
+  net.ipv4.tcp_congestion_control = bbr
+  ```
+
+- **Check AMDGPU Driver & OverDrive Status**:
+  ```bash
+  $ sudo dmesg | grep -i amdgpu
+  [    5.839374] amdgpu: Overdrive is enabled...
+  [    5.839502] amdgpu 0000:0d:00.0: amdgpu: initializing kernel modesetting (SIENNA_CICHLID 0x1002:0x73A5...)
+  [    8.098516] amdgpu 0000:0d:00.0: amdgpu: [drm] Display Core v3.2.359 initialized on DCN 3.0
+  ```
+
+- **Check AMD P-State Scaling Driver**:
+  ```bash
+  $ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver
+  amd-pstate-epp
+  ```
+
+- **Check Active Zswap Compressor**:
+  ```bash
+  $ cat /sys/module/zswap/parameters/enabled
+  Y
+  $ cat /sys/module/zswap/parameters/compressor
+  lzo
+  ```
+
+- **Extract Embedded Kernel Configuration from `.deb`**:
+  ```bash
+  $ dpkg-deb --fsys-tarfile linux-image-6.19.14-ryzen9_*.deb | tar -x ./boot/config-6.19.14-ryzen9 -O | grep -E "CONFIG_DEFAULT_TCP_CONG|CONFIG_X86_NATIVE_CPU"
+  CONFIG_DEFAULT_TCP_CONG="bbr"
+  CONFIG_X86_NATIVE_CPU=y
+  ```
+
+---
+
 <img width="92" alt="tux" src="https://github.com/user-attachments/assets/aa76f3de-67d1-4dba-8804-14817b3727f7" /> Linux kernel
 ============
 
