@@ -32,6 +32,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+
       - name: 🧹 Clean up space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
@@ -118,7 +123,7 @@ jobs:
       - name: 🐧 Build kernel
         run: |
           cd kernel_build
-          make -j$(nproc) bindeb-pkg LOCALVERSION=${{ inputs.localversion }} KDEB_PKGVERSION=1 2>&1 | tee ../build.log
+          make -j$(nproc) bindeb-pkg KCFLAGS="-march=znver3" KCPPFLAGS="-march=znver3" LOCALVERSION=${{ inputs.localversion }} KDEB_PKGVERSION=1 2>&1 | tee ../build.log
 
       - name: 🆔 Get compiled kernel version
         id: get_version
@@ -183,6 +188,8 @@ jobs:
             flag && NF {print}
           ' "$CHANGES_FILE")
       
+          GIT_CHANGELOG=$(git log -n 10 --pretty=format:"* %h - %s (%an, %cr)" 2>/dev/null || echo " * Custom built Linux kernel.")
+      
           cat <<EOF > release.md
           **Format:** $FORMAT  
           **Date:** $DATE  
@@ -199,7 +206,7 @@ jobs:
           $DESCRIPTION
           
           ## 🔄 ChangeLog:
-           * Custom built Linux kernel.
+          $GIT_CHANGELOG
           
           ## ✅ Checksums-Sha1:
           \`\`\`bash
