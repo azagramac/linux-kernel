@@ -37,7 +37,7 @@ graph LR
 
 ---
 
-## ⚡ Kernel Customization & Performance Matrix
+## ⚡ Kernel Customization & Performance
 
 | Subsystem | Configuration / Option | Engineering Rationale |
 | :--- | :--- | :--- |
