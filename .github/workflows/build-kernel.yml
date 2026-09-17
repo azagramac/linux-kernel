@@ -27,6 +27,10 @@ on:
         required: false
         default: 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
