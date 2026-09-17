@@ -1,12 +1,15 @@
 name: 🐧 Build kernel
 
 on:
+  pull_request:
+    branches:
+      - master
   workflow_dispatch:
     inputs:
       config:
-        description: '📄 Kernel config name (ej: config-6.18.2-debian13 from configs/)'
+        description: '📄 Kernel config name (ej: config-6.19.14-debian13 from configs/)'
         required: true
-        default: 'config-6.19.14-ryzen9'
+        default: 'config-6.19.14-debian13'
       patch:
         description: '🧩 Optional patch name (from patchs/ in repo)'
         required: false
@@ -14,7 +17,7 @@ on:
       localversion:
         description: '📄 Local version name (ej: -custom, -local..)'
         required: true
-        default: ''
+        default: '-ryzen9'
       tag:
         description: '🏷️ Git tag from torvalds/linux repo (used if no URL)'
         required: false
@@ -33,7 +36,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 10
 
@@ -49,17 +52,18 @@ jobs:
             libncurses5-dev libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch
 
       - name: 📥 Download kernel tarball
-        if: ${{ inputs.url != '' }}
+        if: ${{ inputs.url != '' || (inputs.tag == '' && github.event_name == 'pull_request') }}
         id: download_tarball
         run: |
-          FILENAME=$(basename "${{ inputs.url }}")
+          URL="${{ inputs.url || 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz' }}"
+          FILENAME=$(basename "$URL")
           EXT="${FILENAME##*.}"
           if [[ "$EXT" != "gz" && "$EXT" != "xz" ]]; then
             echo "❌ Only .tar.gz or .tar.xz are allowed"
             exit 1
           fi
           echo "⬇️ Downloading kernel package..."
-          curl -L -o kernel_package.tar."$EXT" "${{ inputs.url }}"
+          curl -L -o kernel_package.tar."$EXT" "$URL"
           mkdir -p kernel_build
           tar -xf kernel_package.tar."$EXT" -C kernel_build --strip-components=1
           TAG=$(echo "$FILENAME" | sed -E 's/linux-([0-9]+\.[0-9]+\.[0-9]+)\.tar\.(gz|xz)/\1/')
@@ -81,20 +85,30 @@ jobs:
 
       - name: 📄 Download .config and optional patch from GitHub
         run: |
-          CONFIG_INPUT="${{ inputs.config }}"
+          CONFIG_INPUT="${{ inputs.config || 'config-6.19.14-debian13' }}"
           PATCH_INPUT="${{ inputs.patch }}"
           
-          CONFIG_URL="https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master/configs/${CONFIG_INPUT}"
-          echo "⬇️ Downloading config from $CONFIG_URL..."
-          curl -L -o kernel_build/.config "$CONFIG_URL"
+          if [ -f "configs/${CONFIG_INPUT}" ]; then
+            echo "📋 Using local config configs/${CONFIG_INPUT}..."
+            cp "configs/${CONFIG_INPUT}" kernel_build/.config
+          else
+            CONFIG_URL="https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master/configs/${CONFIG_INPUT}"
+            echo "⬇️ Downloading config from $CONFIG_URL..."
+            curl -L -o kernel_build/.config "$CONFIG_URL"
+          fi
 
           if [ -n "$PATCH_INPUT" ]; then
-            PATCH_URL="https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master/patchs/${PATCH_INPUT}"
-            echo "⬇️ Downloading patch from $PATCH_URL..."
-            if curl -L -f -o kernel_build/patch_file.patch "$PATCH_URL"; then
-              echo "✅ Patch downloaded successfully"
+            if [ -f "patchs/${PATCH_INPUT}" ]; then
+              echo "📋 Using local patch patchs/${PATCH_INPUT}..."
+              cp "patchs/${PATCH_INPUT}" kernel_build/patch_file.patch
             else
-              echo "⚠️ Patch $PATCH_INPUT not found, skipping..."
+              PATCH_URL="https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master/patchs/${PATCH_INPUT}"
+              echo "⬇️ Downloading patch from $PATCH_URL..."
+              if curl -L -f -o kernel_build/patch_file.patch "$PATCH_URL"; then
+                echo "✅ Patch downloaded successfully"
+              else
+                echo "⚠️ Patch $PATCH_INPUT not found, skipping..."
+              fi
             fi
           fi
 
@@ -123,7 +137,9 @@ jobs:
       - name: 🐧 Build kernel
         run: |
           cd kernel_build
-          make -j$(nproc) bindeb-pkg KCFLAGS="-march=znver3" KCPPFLAGS="-march=znver3" LOCALVERSION=${{ inputs.localversion }} KDEB_PKGVERSION=1 2>&1 | tee ../build.log
+          KERNEL_VER=$(make kernelversion)
+          LOCAL_VER="${{ inputs.localversion || '-ryzen9' }}"
+          make -j$(nproc) bindeb-pkg KCFLAGS="-march=znver3" KCPPFLAGS="-march=znver3" LOCALVERSION="$LOCAL_VER" KDEB_PKGVERSION="$KERNEL_VER" 2>&1 | tee ../build.log
 
       - name: 🆔 Get compiled kernel version
         id: get_version
@@ -233,12 +249,14 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: 🚀 Upload Linux Kernel
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: kernel-${{ github.run_number }}
           name: "Kernel ${{ steps.get_version.outputs.version }}"
           body: ${{ steps.release_body.outputs.body }}
-          files: artifacts/*.deb
+          files: |
+            artifacts/*.deb
+            artifacts/*.buildinfo
           overwrite_files: true
           generate_release_notes: true
         env:
