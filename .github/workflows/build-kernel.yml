@@ -59,7 +59,7 @@ jobs:
         if: ${{ inputs.url != '' || (inputs.tag == '' && github.event_name == 'pull_request') }}
         id: download_tarball
         run: |
-          URL="${{ inputs.url || 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz' }}"
+          URL="${{ inputs.url }}"
           FILENAME=$(basename "$URL")
           EXT="${FILENAME##*.}"
           if [[ "$EXT" != "gz" && "$EXT" != "xz" ]]; then
