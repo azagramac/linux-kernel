@@ -36,7 +36,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 10
 
@@ -249,7 +249,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: 🚀 Upload Linux Kernel
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: kernel-${{ github.run_number }}
           name: "Kernel ${{ steps.get_version.outputs.version }}"
