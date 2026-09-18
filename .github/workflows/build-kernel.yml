@@ -34,21 +34,22 @@ concurrency:
 permissions:
   contents: write
 
-jobs:
-  build-kernel:
-    runs-on: ubuntu-latest
-    env:
-      DEFAULT_CONFIG: 'config-6.19.14-debian13'
-      DEFAULT_LOCALVERSION: '-ryzen9'
-      DEFAULT_URL: 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz'
-      ARCH_FLAGS: '-march=znver3'
-      RAW_BASE_URL: 'https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master'
-      KERNEL_CONFIG: ${{ inputs.config || 'config-6.19.14-debian13' }}
-      KERNEL_LOCALVERSION: ${{ inputs.localversion || '-ryzen9' }}
-      KERNEL_URL: ${{ inputs.url || 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz' }}
-      KERNEL_PATCH: ${{ inputs.patch }}
-      KERNEL_TAG: ${{ inputs.tag }}
+env:
+  DEFAULT_CONFIG: 'config-6.19.14-debian13'
+  DEFAULT_LOCALVERSION: '-ryzen9'
+  DEFAULT_URL: 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz'
+  ARCH_FLAGS: '-march=znver3'
+  RAW_BASE_URL: 'https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master'
+  KERNEL_CONFIG: ${{ inputs.config || 'config-6.19.14-debian13' }}
+  KERNEL_LOCALVERSION: ${{ inputs.localversion || '-ryzen9' }}
+  KERNEL_URL: ${{ inputs.url || 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz' }}
+  KERNEL_PATCH: ${{ inputs.patch }}
+  KERNEL_TAG: ${{ inputs.tag }}
 
+jobs:
+  setup-and-prepare:
+    name: 🔍 1. Setup & Prepare Source
+    runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
@@ -65,6 +66,15 @@ jobs:
           sudo apt update -qq
           sudo apt install -y git build-essential fakeroot bc bison flex libdw-dev libelf-dev libssl-dev \
             libncurses5-dev libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch
+
+      - name: ⚡ Setup Compiler Cache (ccache)
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ runner.os }}-${{ env.KERNEL_CONFIG }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ env.KERNEL_CONFIG }}-
+            ccache-${{ runner.os }}-
 
       - name: 📥 Download kernel tarball
         if: ${{ inputs.url != '' || (inputs.tag == '' && github.event_name == 'pull_request') }}
@@ -150,6 +160,44 @@ jobs:
         run: |
           echo "🏷️ Kernel to be built: $(make kernelrelease)"
 
+      - name: 📤 Upload prepared kernel source artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: prepared-kernel-source
+          path: kernel_build/
+          include-hidden-files: true
+
+  build-kernel:
+    name: 🐧 2. Build Kernel
+    needs: setup-and-prepare
+    runs-on: ubuntu-latest
+    outputs:
+      kernel_version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v7
+
+      - name: ⚙️ Install build dependencies
+        run: |
+          sudo apt update -qq
+          sudo apt install -y git build-essential fakeroot bc bison flex libdw-dev libelf-dev libssl-dev \
+            libncurses5-dev libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch
+
+      - name: ⚡ Setup Compiler Cache (ccache)
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ runner.os }}-${{ env.KERNEL_CONFIG }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ env.KERNEL_CONFIG }}-
+            ccache-${{ runner.os }}-
+
+      - name: 📥 Download prepared kernel source
+        uses: actions/download-artifact@v8
+        with:
+          name: prepared-kernel-source
+          path: kernel_build
+
       - name: 🐧 Build kernel
         if: ${{ github.event_name != 'pull_request' }}
         working-directory: kernel_build
@@ -165,16 +213,40 @@ jobs:
         run: |
           echo "version=$(make kernelrelease)" >> $GITHUB_OUTPUT
 
-      - name: 📦 Move .deb artifacts
-        if: ${{ github.event_name != 'pull_request' }}
+      - name: 📦 Move .deb & log artifacts (Robust Error Handling)
+        if: ${{ always() }}
         run: |
           mkdir -p artifacts
           find . -name "*.deb" -exec cp {} artifacts/ \;
           find . -name "*.changes" -exec cp {} artifacts/ \;
           find . -name "*.buildinfo" -exec cp {} artifacts/ \;
+          if [ -f build.log ]; then cp build.log artifacts/; fi
+
+      - name: 📤 Upload compiled kernel artifacts
+        if: ${{ github.event_name != 'pull_request' && always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: compiled-kernel-artifacts
+          path: artifacts/
+
+  create-release:
+    name: 🚀 3. GitHub Release
+    needs: build-kernel
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    outputs:
+      release_description: ${{ steps.release_body.outputs.description }}
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v7
+
+      - name: 📥 Download compiled kernel artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: compiled-kernel-artifacts
+          path: artifacts/
 
       - name: 📋 Generate formatted release body from .changes
-        if: ${{ github.event_name != 'pull_request' }}
         id: release_body
         shell: bash
         run: |
@@ -269,11 +341,10 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: 🚀 Upload Linux Kernel
-        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: kernel-${{ github.run_number }}
-          name: "Kernel ${{ steps.get_version.outputs.version }}"
+          name: "Kernel ${{ needs.build-kernel.outputs.kernel_version }}"
           body: ${{ steps.release_body.outputs.body }}
           files: |
             artifacts/*.deb
@@ -283,16 +354,32 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  notify-telegram:
+    name: 📤 4. Telegram Notification
+    needs: [setup-and-prepare, build-kernel, create-release]
+    if: ${{ github.event_name != 'pull_request' && always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Download Compiled Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: compiled-kernel-artifacts
+          path: artifacts/
+        continue-on-error: true
+
       - name: 📤 Send Telegram notification
-        if: ${{ github.event_name != 'pull_request' && always() }}
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHATID: ${{ secrets.TELEGRAM_CHATID }}
-          BUILD_STATUS: ${{ job.status }}
-          KERNEL_VERSION: ${{ steps.get_version.outputs.version }}
-          PKG_DESCRIPTION: ${{ steps.release_body.outputs.description }}
+          BUILD_STATUS: ${{ needs.build-kernel.result }}
+          KERNEL_VERSION: ${{ needs.build-kernel.outputs.kernel_version }}
+          PKG_DESCRIPTION: ${{ needs.create-release.outputs.release_description }}
         run: |
           RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          if [ -f artifacts/build.log ]; then
+            cp artifacts/build.log build.log
+          fi
 
           if [ "$BUILD_STATUS" = "success" ]; then
             CLEAN_DESC=$(echo "$PKG_DESCRIPTION" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
