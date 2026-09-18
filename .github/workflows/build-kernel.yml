@@ -37,6 +37,17 @@ permissions:
 jobs:
   build-kernel:
     runs-on: ubuntu-latest
+    env:
+      DEFAULT_CONFIG: 'config-6.19.14-debian13'
+      DEFAULT_LOCALVERSION: '-ryzen9'
+      DEFAULT_URL: 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz'
+      ARCH_FLAGS: '-march=znver3'
+      RAW_BASE_URL: 'https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master'
+      KERNEL_CONFIG: ${{ inputs.config || 'config-6.19.14-debian13' }}
+      KERNEL_LOCALVERSION: ${{ inputs.localversion || '-ryzen9' }}
+      KERNEL_URL: ${{ inputs.url || 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz' }}
+      KERNEL_PATCH: ${{ inputs.patch }}
+      KERNEL_TAG: ${{ inputs.tag }}
 
     steps:
       - name: 📥 Checkout repository
@@ -59,7 +70,7 @@ jobs:
         if: ${{ inputs.url != '' || (inputs.tag == '' && github.event_name == 'pull_request') }}
         id: download_tarball
         run: |
-          URL="${{ inputs.url || 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz' }}"
+          URL="$KERNEL_URL"
           FILENAME=$(basename "$URL")
           EXT="${FILENAME##*.}"
           if [[ "$EXT" != "gz" && "$EXT" != "xz" ]]; then
@@ -77,8 +88,8 @@ jobs:
         if: ${{ inputs.url == '' && inputs.tag != '' }}
         id: clone_repo
         run: |
-          git clone --depth 1 --branch ${{ inputs.tag }} https://github.com/torvalds/linux kernel_build
-          echo "kernel_tag=${{ inputs.tag }}" >> $GITHUB_ENV
+          git clone --depth 1 --branch "$KERNEL_TAG" https://github.com/torvalds/linux kernel_build
+          echo "kernel_tag=$KERNEL_TAG" >> $GITHUB_ENV
 
       - name: 🔍 Verify kernel source
         run: |
@@ -89,14 +100,14 @@ jobs:
 
       - name: 📄 Download .config and optional patch from GitHub
         run: |
-          CONFIG_INPUT="${{ inputs.config || 'config-6.19.14-debian13' }}"
-          PATCH_INPUT="${{ inputs.patch }}"
+          CONFIG_INPUT="$KERNEL_CONFIG"
+          PATCH_INPUT="$KERNEL_PATCH"
           
           if [ -f "configs/${CONFIG_INPUT}" ]; then
             echo "📋 Using local config configs/${CONFIG_INPUT}..."
             cp "configs/${CONFIG_INPUT}" kernel_build/.config
           else
-            CONFIG_URL="https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master/configs/${CONFIG_INPUT}"
+            CONFIG_URL="${RAW_BASE_URL}/configs/${CONFIG_INPUT}"
             echo "⬇️ Downloading config from $CONFIG_URL..."
             curl -L -o kernel_build/.config "$CONFIG_URL"
           fi
@@ -106,7 +117,7 @@ jobs:
               echo "📋 Using local patch patchs/${PATCH_INPUT}..."
               cp "patchs/${PATCH_INPUT}" kernel_build/patch_file.patch
             else
-              PATCH_URL="https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master/patchs/${PATCH_INPUT}"
+              PATCH_URL="${RAW_BASE_URL}/patchs/${PATCH_INPUT}"
               echo "⬇️ Downloading patch from $PATCH_URL..."
               if curl -L -f -o kernel_build/patch_file.patch "$PATCH_URL"; then
                 echo "✅ Patch downloaded successfully"
@@ -117,48 +128,53 @@ jobs:
           fi
 
       - name: 🔧 Apply kernel config
+        working-directory: kernel_build
         run: |
-          cd kernel_build
           echo "🔧 Applying configuration and running olddefconfig..."
           make olddefconfig
 
       - name: 🧩 Apply patch
         if: ${{ inputs.patch != '' }}
+        working-directory: kernel_build
         run: |
-          cd kernel_build
-          if [ -f patch_file.patch ]; then
-            echo "🔧 Applying patch patch_file.patch"
-            patch -p1 < patch_file.patch || true
+          PATCH_FILE="patch_file.patch"
+          if [ -f "$PATCH_FILE" ]; then
+            echo "🔧 Applying patch $PATCH_FILE"
+            patch -p1 < "$PATCH_FILE" || true
           else
             echo "⚠️ No patch to apply, continuing build"
           fi
 
       - name: 🔍 Show kernel version
+        working-directory: kernel_build
         run: |
-          cd kernel_build
           echo "🏷️ Kernel to be built: $(make kernelrelease)"
 
       - name: 🐧 Build kernel
+        if: ${{ github.event_name != 'pull_request' }}
+        working-directory: kernel_build
         run: |
-          cd kernel_build
           KERNEL_VER=$(make kernelversion)
-          LOCAL_VER="${{ inputs.localversion || '-ryzen9' }}"
-          make -j$(nproc) bindeb-pkg KCFLAGS="-march=znver3" KCPPFLAGS="-march=znver3" LOCALVERSION="$LOCAL_VER" KDEB_PKGVERSION="$KERNEL_VER" 2>&1 | tee ../build.log
+          LOCAL_VER="$KERNEL_LOCALVERSION"
+          make -j$(nproc) bindeb-pkg KCFLAGS="$ARCH_FLAGS" KCPPFLAGS="$ARCH_FLAGS" LOCALVERSION="$LOCAL_VER" KDEB_PKGVERSION="$KERNEL_VER$LOCAL_VER" 2>&1 | tee ../build.log
 
       - name: 🆔 Get compiled kernel version
+        if: ${{ github.event_name != 'pull_request' }}
         id: get_version
+        working-directory: kernel_build
         run: |
-          cd kernel_build
           echo "version=$(make kernelrelease)" >> $GITHUB_OUTPUT
 
       - name: 📦 Move .deb artifacts
+        if: ${{ github.event_name != 'pull_request' }}
         run: |
           mkdir -p artifacts
-          find .. -name "*.deb" -exec cp {} artifacts/ \;
-          find .. -name "*.changes" -exec cp {} artifacts/ \;
-          find .. -name "*.buildinfo" -exec cp {} artifacts/ \;
+          find . -name "*.deb" -exec cp {} artifacts/ \;
+          find . -name "*.changes" -exec cp {} artifacts/ \;
+          find . -name "*.buildinfo" -exec cp {} artifacts/ \;
 
       - name: 📋 Generate formatted release body from .changes
+        if: ${{ github.event_name != 'pull_request' }}
         id: release_body
         shell: bash
         run: |
@@ -268,22 +284,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📤 Send Telegram notification
-        if: always()
+        if: ${{ github.event_name != 'pull_request' && always() }}
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHATID: ${{ secrets.TELEGRAM_CHATID }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          GITHUB_REPO: ${{ github.repository }}
           BUILD_STATUS: ${{ job.status }}
           KERNEL_VERSION: ${{ steps.get_version.outputs.version }}
           PKG_DESCRIPTION: ${{ steps.release_body.outputs.description }}
-          INPUT_CONFIG: ${{ inputs.config || 'config-6.19.14-debian13' }}
-          INPUT_LOCALVERSION: ${{ inputs.localversion || '-ryzen9' }}
-          INPUT_TAG: ${{ inputs.tag }}
-          INPUT_URL: ${{ inputs.url || 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz' }}
-          INPUT_PATCH: ${{ inputs.patch }}
         run: |
-          RUN_URL="https://github.com/${GITHUB_REPO}/actions/runs/${GITHUB_RUN_ID}"
+          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
           if [ "$BUILD_STATUS" = "success" ]; then
             CLEAN_DESC=$(echo "$PKG_DESCRIPTION" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
@@ -301,36 +310,36 @@ jobs:
             🏷️ <b>Workflow:</b>
             🔗 <a href=\"${RUN_URL}\">Ver detalles en GitHub</a>"
 
-                      else
-                        ERROR_LOG=""
-                        if [ -f build.log ]; then
-                          ERROR_SNIPPET=$(tail -n 12 build.log | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-                          ERROR_LOG="
+          else
+            ERROR_LOG=""
+            if [ -f build.log ]; then
+              ERROR_SNIPPET=$(tail -n 12 build.log | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+              ERROR_LOG="
             📋 <b>Últimas líneas del log de error:</b>
             <pre>${ERROR_SNIPPET}</pre>"
-                        fi
+            fi
 
-                        SRC_INFO="${INPUT_TAG}"
-                        if [ -z "$SRC_INFO" ]; then
-                          SRC_INFO="${INPUT_URL}"
-                        fi
-                        if [ -z "$SRC_INFO" ]; then
-                          SRC_INFO="No especificado"
-                        fi
+            SRC_INFO="${KERNEL_TAG}"
+            if [ -z "$SRC_INFO" ]; then
+              SRC_INFO="${KERNEL_URL}"
+            fi
+            if [ -z "$SRC_INFO" ]; then
+              SRC_INFO="No especificado"
+            fi
 
-                        MESSAGE="<b>🐧 Linux Kernel Build ❌ Fallido (${BUILD_STATUS^})</b>
+            MESSAGE="<b>🐧 Linux Kernel Build ❌ Fallido (${BUILD_STATUS^})</b>
 
             ⚠️ <b>Parámetros de la ejecución:</b>
-            • <b>Config:</b> ${INPUT_CONFIG:-N/A}
+            • <b>Config:</b> ${KERNEL_CONFIG:-N/A}
             • <b>Origen:</b> ${SRC_INFO}
-            • <b>Localversion:</b> ${INPUT_LOCALVERSION:-Ninguna}
-            • <b>Parche:</b> ${INPUT_PATCH:-Ninguno}${ERROR_LOG}
+            • <b>Localversion:</b> ${KERNEL_LOCALVERSION:-Ninguna}
+            • <b>Parche:</b> ${KERNEL_PATCH:-Ninguno}${ERROR_LOG}
 
             🏷️ <b>Workflow:</b>
             🔗 <a href=\"${RUN_URL}\">Ver logs completos en GitHub Actions</a>"
-                      fi
+          fi
 
-                      curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-                        --data-urlencode "chat_id=${TELEGRAM_CHATID}" \
-                        --data-urlencode "parse_mode=HTML" \
-                        --data-urlencode "text=$MESSAGE" >/dev/null 2>&1
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHATID}" \
+            --data-urlencode "parse_mode=HTML" \
+            --data-urlencode "text=$MESSAGE" >/dev/null 2>&1
