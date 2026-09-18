@@ -253,6 +253,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: 🚀 Upload Linux Kernel
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: kernel-${{ github.run_number }}
@@ -276,10 +277,10 @@ jobs:
           BUILD_STATUS: ${{ job.status }}
           KERNEL_VERSION: ${{ steps.get_version.outputs.version }}
           PKG_DESCRIPTION: ${{ steps.release_body.outputs.description }}
-          INPUT_CONFIG: ${{ inputs.config }}
-          INPUT_LOCALVERSION: ${{ inputs.localversion }}
+          INPUT_CONFIG: ${{ inputs.config || 'config-6.19.14-debian13' }}
+          INPUT_LOCALVERSION: ${{ inputs.localversion || '-ryzen9' }}
           INPUT_TAG: ${{ inputs.tag }}
-          INPUT_URL: ${{ inputs.url }}
+          INPUT_URL: ${{ inputs.url || 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz' }}
           INPUT_PATCH: ${{ inputs.patch }}
         run: |
           RUN_URL="https://github.com/${GITHUB_REPO}/actions/runs/${GITHUB_RUN_ID}"
