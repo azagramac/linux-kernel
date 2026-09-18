@@ -50,6 +50,7 @@ graph LR
 | **Tickless Kernel** | `NO_HZ_FULL=y` | Adaptive tickless kernel to eliminate periodic timer interrupts on heavy workloads. |
 | **CPU Core Sizing** | `CONFIG_NR_CPUS=32` | Hardcapped to 32 threads matching Ryzen 9 5950X, eliminating virtual CPU overhead. |
 | **CPU Frequency Scaling**| `amd-pstate` EPP (`CONFIG_X86_AMD_PSTATE=y`) | Hardware CPPC microsecond-level core frequency and voltage adjustments. |
+| **NUMA Balancing** | `# CONFIG_NUMA_BALANCING is not set` | Disabled NUMA balancing to eliminate periodic cross-node scan overhead on 1-NUMA Ryzen CPUs. |
 | **Core Scheduling** | `CONFIG_SCHED_CORE=y` | SMT thread isolation and core scheduling for security and hyperthreading performance. |
 | **RCU Optimization** | `CONFIG_RCU_BOOST=y` / `CONFIG_RCU_NOCB_CPU=y` | RCU callback offloading and boosting to eliminate desktop micro-stuttering. |
 | **TCP Congestion** | **TCP BBR** (`CONFIG_DEFAULT_TCP_CONG="bbr"`) | Bottleneck bandwidth RTT pacing algorithm to prevent bufferbloat and latency spikes. |
@@ -58,10 +59,11 @@ graph LR
 | **Async Socket I/O** | `IO_URING_ZCRX=y` | Zero-copy packet reception for ultra-fast network socket I/O. |
 | **GPU Driver & Display** | `amdgpu` + Display Core `DCN 3.0` | Native RDNA 2 support, Resizable BAR (ReBAR), and OverDrive power limit unlocking. |
 | **GPU ROCm Compute** | `CONFIG_HSA_AMD=y` / `USERPTR=y` | Native AMD KFD driver for ROCm, OpenCL 3.0, and direct GPU user-pointer memory access. |
+| **PlayStation Gamepads** | `CONFIG_HID_PLAYSTATION=m` / `FF=y` | Sony DualSense (PS5) & DualShock 4 (PS4) controller support with haptic Force Feedback. |
 | **Legacy Radeon Removal**| `# CONFIG_DRM_RADEON is not set` | Legacy Radeon DRM driver disabled to ensure exclusive `amdgpu` driver stack execution. |
 | **AMD IOMMU Isolation** | `CONFIG_AMD_IOMMU=y` (`# INTEL_IOMMU`) | Native AMD Vi IOMMU enabled while stripping unused Intel DMAR overhead. |
 | **Memory / Zswap** | `zswap` + `lzo` (`CONFIG_ZSWAP=y`) | In-RAM compressed swap cache matching kernel boot parameters (`zswap.compressor=lzo`). |
-| **Hugepages & Compaction**| `MADVISE` + `CONFIG_COMPACTION=y` | Background memory defragmentation and 2MB page allocation for heavy workloads. |
+| **Hugepages & Compaction**| `THP MADVISE` + `COMPACTION=y` | Transparent Hugepages THP default set to `madvise` to avoid memory bloat with opt-in THP for games/VMs. |
 | **Hung Task Diagnostics** | `CONFIG_DETECT_HUNG_TASK=y` (120s) | Automatic detection and logging of blocked or hanging kernel threads. |
 | **Stack Unwinder** | `UNWINDER_ORC=y` | Low-overhead ORC call stack unwinding for precise ftrace kernel profiling. |
 | **Hi-Res Audio Driver** | `snd_ca0132` (Sound Core3D) | Dedicated ALSA sound driver configured for 32-bit / 192 kHz high-resolution audio. |
@@ -88,12 +90,14 @@ This custom kernel build and CI/CD pipeline are specifically tuned for maximum p
 - **Tickless Full (`NO_HZ_FULL`)**: Adaptive tickless kernel (`CONFIG_NO_HZ_FULL=y`) preventing periodic timer interrupts on heavy workloads and gaming threads.
 - **RCU Prioritization**: RCU boosting (`CONFIG_RCU_BOOST=y`) and offloading (`CONFIG_RCU_NOCB_CPU=y`) to eliminate micro-stuttering.
 - **Hi-Res Audio Driver**: Dedicated Sound Blaster Z ALSA driver (`snd_ca0132` / Sound Core3D) configured for 32-bit / 192 kHz low-jitter audio.
+- **PlayStation DualSense & DualShock 4**: Dedicated Sony PlayStation HID driver (`CONFIG_HID_PLAYSTATION=m`, `CONFIG_PLAYSTATION_FF=y`) with full haptic Force Feedback for PS4/PS5 gamepads over USB and Bluetooth.
 
 ### 🧠 3. CPU Optimizations (AMD Ryzen 9 5950X — 16C / 32T)
 - **Native Architecture Compilation**: Target compilation set to **Zen 3** (`-march=znver3` via `KCFLAGS="-march=znver3"`, `CONFIG_X86_NATIVE_CPU=y`).
 - **Core Scheduling**: Hardware SMT core scheduling enabled (`CONFIG_SCHED_CORE=y`) for thread isolation, security, and hyperthreading gaming performance.
 - **Sized Core Count**: Sized to `CONFIG_NR_CPUS=32` matching exact hardware threads, removing virtual CPU overhead.
 - **AMD P-State Driver**: Native `amd-pstate` CPPC driver with EPP enabled (`CONFIG_X86_AMD_PSTATE=y`, `CONFIG_X86_AMD_PSTATE_UT=y`) for microsecond-level frequency scaling.
+- **NUMA Balancing Disabled**: Disabled automatic NUMA balancing (`# CONFIG_NUMA_BALANCING is not set`) to eliminate background memory scan overhead on single-node Ryzen CPUs (`Modo(s) NUMA: 1`).
 
 ### 🎮 4. GPU & Display Core (Radeon RX 6950 XT / Navi 21)
 - **Display Core (DCN 3.0)**: AMD Display Core enabled (`CONFIG_DRM_AMD_DC=y`, `CONFIG_DRM_AMD_DC_DCN=y`) optimized for Navi 21 architecture.
@@ -108,7 +112,7 @@ This custom kernel build and CI/CD pipeline are specifically tuned for maximum p
 
 ### 💾 6. Memory Tuning (Zswap `lzo`)
 - **Zswap Storage**: Native `zswap` with `lzo` compressor (`CONFIG_ZSWAP=y`, `CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO=y`) matching kernel boot parameters.
-- **Transparent Hugepages & Compaction**: Active background memory compaction (`CONFIG_COMPACTION=y`) and Transparent Hugepages (`CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y`) for heavy memory workloads.
+- **Transparent Hugepages (`madvise`)**: Set THP default to `madvise` (`CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y`) alongside memory compaction (`CONFIG_COMPACTION=y`) to prevent system-wide memory bloat while enabling 2MB hugepages for opt-in applications (games, emulators, KVM).
 
 ### 🛠️ 7. Diagnostics & CI/CD Pipeline
 - **ORC Unwinder & Hung Task Detection**: ORC stack unwinder (`CONFIG_UNWINDER_ORC=y`) and automatic 120s hung task detection (`CONFIG_DETECT_HUNG_TASK=y`).
