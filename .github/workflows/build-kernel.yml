@@ -251,7 +251,7 @@ jobs:
         id: release_body
         shell: bash
         run: |
-          CHANGES_FILE=$(find artifacts -maxdepth 1 -name "*.changes" | head -n1)
+          CHANGES_FILE=$(find . -name "*.changes" | head -n1)
       
           if [ -z "$CHANGES_FILE" ]; then
             echo "❌ No .changes file found in artifacts"
