@@ -5,6 +5,9 @@
 [![Target OS](https://img.shields.io/badge/OS-Debian%2013%20Trixie-a80030.svg)](https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/)
 [![Compiler](https://img.shields.io/badge/Compiler-GCC%2014.2.0-green.svg)](https://gcc.gnu.org/gcc-14/)
 
+<img width="1280" height="633" alt="image" src="https://github.com/user-attachments/assets/2ac771d9-90bb-4ab6-a514-c74cd15582ef" />
+
+
 ---
 
 Last build
