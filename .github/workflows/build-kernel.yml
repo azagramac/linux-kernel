@@ -72,7 +72,7 @@ jobs:
 
       - name: ⚙️ Install build dependencies
         run: |
-          sudo apt install -y build-essential gcc-14 g++-14 bc bison flex libssl-dev patch dwarves jq curl
+          sudo apt install -y build-essential gcc-14 g++-14 bc bison flex libssl-dev patch dwarves jq curl kmod
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
@@ -197,7 +197,7 @@ jobs:
       - name: ⚙️ Install build dependencies
         run: |
           sudo apt install -y git build-essential gcc-14 g++-14 fakeroot bc bison flex libdw-dev libelf-dev libssl-dev \
-            libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch
+            libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch kmod
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
