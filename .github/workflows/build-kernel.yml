@@ -209,7 +209,7 @@ jobs:
           find . -type f \( -name "*.sh" -o -name "*.pl" -o -name "*.py" \) -exec chmod +x {} +
           KERNEL_VER=$(make kernelversion)
           LOCAL_VER="$KERNEL_LOCALVERSION"
-          make -j$(nproc) bindeb-pkg KCFLAGS="$ARCH_FLAGS" KCPPFLAGS="$ARCH_FLAGS" LOCALVERSION="$LOCAL_VER" KDEB_PKGVERSION="$KERNEL_VER$LOCAL_VER" 2>&1 | tee ../build.log
+          make -j$(nproc) bindeb-pkg KCFLAGS="$ARCH_FLAGS" LOCALVERSION="$LOCAL_VER" KDEB_PKGVERSION="$KERNEL_VER$LOCAL_VER" 2>&1 | tee ../build.log
 
       - name: 🆔 Get compiled kernel version
         if: ${{ github.event_name != 'pull_request' }}
