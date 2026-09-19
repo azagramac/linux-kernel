@@ -11,6 +11,7 @@
 ---
 
 Last build
+
 ---
 
 <img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/38fd71b7-4228-4da3-a886-f994e157db3a" />
@@ -20,21 +21,31 @@ Last build
 ## 📌 Project Architecture & CI/CD Workflow
 
 ```mermaid
-graph LR
-    A["📄 Kconfig<br/>config-6.19.14-ryzen9"] --> B["⚙️ GitHub Actions Runner<br/>"]
-    C["📦 Kernel Source 6.19.14<br/>(kernel.org)"] --> B
-    B -->|"🔧 KCFLAGS='-march=znver3'"| D["🐧 make bindeb-pkg"]
-    D --> E["📦 Debian .deb Packages<br/>(headers, image, dbg, libc-dev)"]
-    E --> F["🚀 GitHub Release &<br/>📲 Telegram Notification"]
-    E -->|"💻 sudo dpkg -i"| G["🖥️ Debian 13 Workstation<br/>(Ryzen 9 5950X + RX 6950 XT)"]
+graph TD
+    subgraph Job1["🔍 1. Prepare Environment (Debian Container)"]
+        A1["📦 Kernel Source<br/>(kernel.org / Git Tag)"] --> A3["🔧 make olddefconfig<br/>(+ Optional Patch)"]
+        A2["📄 Kconfig<br/>(configs/ or Remote)"] --> A3
+        A3 --> A4["📤 Upload Source Artifact"]
+    end
 
-    style A fill:#2d3748,stroke:#4a5568,color:#fff
-    style B fill:#1a202c,stroke:#319795,color:#fff
-    style C fill:#2d3748,stroke:#4a5568,color:#fff
-    style D fill:#2b6cb0,stroke:#3182ce,color:#fff
-    style E fill:#2f855a,stroke:#38a169,color:#fff
-    style F fill:#805ad5,stroke:#9f7aea,color:#fff
-    style G fill:#dd6b20,stroke:#ed8936,color:#fff
+    subgraph Job2["🐧 2. Build Kernel & Release (Debian Container)"]
+        B1["📥 Download Source Artifact"] --> B2["🐧 make bindeb-pkg<br/>(KCFLAGS='-march=znver3')"]
+        B2 --> B3["📦 Debian .deb Packages<br/>(headers, image, dbg, libc-dev)"]
+        B3 --> B4["🚀 GitHub Release"]
+    end
+
+    subgraph Job3["📤 3. Telegram Notification"]
+        C1["📲 Send Status &<br/>Logs to Telegram"]
+    end
+
+    Job1 --> Job2
+    Job2 --> Job3
+    B3 -->|"💻 sudo dpkg -i"| D["🖥️ Workstation<br/>(Ryzen 9 5950X + RX 6950 XT)"]
+
+    style Job1 fill:#1a202c,stroke:#319795,color:#fff
+    style Job2 fill:#1a202c,stroke:#2b6cb0,color:#fff
+    style Job3 fill:#1a202c,stroke:#805ad5,color:#fff
+    style D fill:#dd6b20,stroke:#ed8936,color:#fff
 ```
 
 ---
@@ -55,6 +66,7 @@ graph LR
 | **TCP Congestion** | **TCP BBR** (`CONFIG_DEFAULT_TCP_CONG="bbr"`) | Bottleneck bandwidth RTT pacing algorithm to prevent bufferbloat and latency spikes. |
 | **eBPF JIT Compiler** | `CONFIG_BPF_JIT=y` / `ALWAYS_ON` | Locked-on JIT compiler for zero-overhead packet filtering and eBPF execution. |
 | **eBPF Security (LSM)** | `CONFIG_BPF_LSM=y` | In-kernel eBPF Linux Security Module for granular, high-performance security hooks. |
+| **eBPF BTF Type Format** | `CONFIG_DEBUG_INFO_BTF=y` | Pahole split-BTF typeinfo generation for vmlinux and modules (`BTF_MODULES=y`) for eBPF tracing tools. |
 | **Async Socket I/O** | `IO_URING_ZCRX=y` | Zero-copy packet reception for ultra-fast network socket I/O. |
 | **GPU Driver & Display** | `amdgpu` + Display Core `DCN 3.0` | Native RDNA 2 support, Resizable BAR (ReBAR), and OverDrive power limit unlocking. |
 | **GPU ROCm Compute** | `CONFIG_HSA_AMD=y` / `USERPTR=y` | Native AMD KFD driver for ROCm, OpenCL 3.0, and direct GPU user-pointer memory access. |
@@ -70,7 +82,7 @@ graph LR
 
 ---
 
-## 🛠️ Custom Kernel Optimizations & Performance Features ([config-6.19.14-ryzen9](https://github.com/azagramac/linux-kernel/blob/master/configs/config-6.19.14-ryzen9))
+## 🛠️ Custom Kernel Optimizations & Performance Features ([config-6.19.14-debian13](https://github.com/azagramac/linux-kernel/blob/master/configs/config-6.19.14-debian13))
 
 This custom kernel build and CI/CD pipeline are specifically tuned for maximum performance, minimal latency, and zero bloat on **AMD Ryzen 9 5950X (Zen 3)** and **AMD Radeon RX 6950 XT (RDNA 2)** hardware running on Debian 13.
 
