@@ -48,8 +48,8 @@ env:
   KERNEL_TAG: ${{ inputs.tag }}
 
 jobs:
-  setup-and-prepare:
-    name: 🔍 1. Setup & Prepare Source
+  prepare:
+    name: 🔍 1. Prepare Environment & Source
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout repository
@@ -65,8 +65,7 @@ jobs:
       - name: ⚙️ Install build dependencies
         run: |
           sudo apt update -qq
-          sudo apt install -y git build-essential fakeroot bc bison flex libdw-dev libelf-dev libssl-dev \
-            libncurses5-dev libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch
+          sudo apt install -y git build-essential bc bison flex libssl-dev curl patch
 
       - name: ⚡ Setup Compiler Cache (ccache)
         uses: actions/cache@v6
@@ -168,12 +167,13 @@ jobs:
           path: kernel_build/
           include-hidden-files: true
 
-  build-kernel:
-    name: 🐧 2. Build Kernel
-    needs: setup-and-prepare
+  build-and-release:
+    name: 🐧 2. Build Kernel & Publish Release
+    needs: prepare
     runs-on: ubuntu-latest
     outputs:
       kernel_version: ${{ steps.get_version.outputs.version }}
+      release_description: ${{ steps.release_body.outputs.description }}
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
@@ -230,24 +230,8 @@ jobs:
           name: compiled-kernel-artifacts
           path: artifacts/
 
-  create-release:
-    name: 🚀 3. GitHub Release
-    needs: build-kernel
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
-    outputs:
-      release_description: ${{ steps.release_body.outputs.description }}
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v7
-
-      - name: 📥 Download compiled kernel artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: compiled-kernel-artifacts
-          path: artifacts/
-
       - name: 📋 Generate formatted release body from .changes
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         id: release_body
         shell: bash
         run: |
@@ -342,10 +326,11 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: 🚀 Upload Linux Kernel
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: kernel-${{ github.run_number }}
-          name: "Kernel ${{ needs.build-kernel.outputs.kernel_version }}"
+          name: "Kernel ${{ steps.get_version.outputs.version }}"
           body: ${{ steps.release_body.outputs.body }}
           files: |
             artifacts/*.deb
@@ -356,8 +341,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   notify-telegram:
-    name: 📤 4. Telegram Notification
-    needs: [setup-and-prepare, build-kernel, create-release]
+    name: 📤 3. Telegram Notification
+    needs: [prepare, build-and-release]
     if: ${{ github.event_name != 'pull_request' && always() }}
     runs-on: ubuntu-latest
     steps:
@@ -372,9 +357,9 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHATID: ${{ secrets.TELEGRAM_CHATID }}
-          BUILD_STATUS: ${{ needs.build-kernel.result }}
-          KERNEL_VERSION: ${{ needs.build-kernel.outputs.kernel_version }}
-          PKG_DESCRIPTION: ${{ needs.create-release.outputs.release_description }}
+          BUILD_STATUS: ${{ needs.build-and-release.result }}
+          KERNEL_VERSION: ${{ needs.build-and-release.outputs.kernel_version }}
+          PKG_DESCRIPTION: ${{ needs.build-and-release.outputs.release_description }}
         run: |
           RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
