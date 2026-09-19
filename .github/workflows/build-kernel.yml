@@ -215,7 +215,7 @@ jobs:
           echo "version=$(make kernelrelease)" >> $GITHUB_OUTPUT
 
       - name: 📦 Move .deb & log artifacts (Robust Error Handling)
-        if: ${{ always() }}
+        if: ${{ github.event_name != 'pull_request' }}
         run: |
           mkdir -p artifacts
           find . -name "*.deb" -exec cp {} artifacts/ \;
