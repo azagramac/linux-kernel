@@ -202,7 +202,11 @@ jobs:
       - name: 🐧 Build kernel
         if: ${{ github.event_name != 'pull_request' }}
         working-directory: kernel_build
+        shell: bash
         run: |
+          set -o pipefail
+          chmod -R +x scripts/
+          find . -type f \( -name "*.sh" -o -name "*.pl" -o -name "*.py" \) -exec chmod +x {} +
           KERNEL_VER=$(make kernelversion)
           LOCAL_VER="$KERNEL_LOCALVERSION"
           make -j$(nproc) bindeb-pkg KCFLAGS="$ARCH_FLAGS" KCPPFLAGS="$ARCH_FLAGS" LOCALVERSION="$LOCAL_VER" KDEB_PKGVERSION="$KERNEL_VER$LOCAL_VER" 2>&1 | tee ../build.log
@@ -238,7 +242,11 @@ jobs:
           CHANGES_FILE=$(find . -name "*.changes" | head -n1)
       
           if [ -z "$CHANGES_FILE" ]; then
-            echo "❌ No .changes file found in artifacts"
+            echo "❌ No .changes file found in workspace or artifacts directory"
+            echo "📁 Content of root directory:"
+            ls -la
+            echo "📁 Content of artifacts directory:"
+            ls -la artifacts/ || true
             exit 1
           fi
       
