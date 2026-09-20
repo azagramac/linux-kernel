@@ -216,12 +216,21 @@ jobs:
           name: prepared-kernel-source
           path: kernel_build
 
+      - name: 🚀 Expand Swap Space for Pahole/BTF
+        run: |
+          sudo fallocate -l 10G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=10240
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
       - name: 🐧 Build kernel
         if: ${{ github.event_name != 'pull_request' }}
         working-directory: kernel_build
         shell: bash
         run: |
           set -o pipefail
+          export DEB_BUILD_OPTIONS="parallel=$(nproc)"
           chmod -R +x scripts/
           find . -type f \( -name "*.sh" -o -name "*.pl" -o -name "*.py" \) -exec chmod +x {} +
           KERNEL_VER=$(make kernelversion)
