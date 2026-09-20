@@ -40,7 +40,7 @@ graph TD
 
     Job1 --> Job2
     Job2 --> Job3
-    B3 -->|"💻 sudo dpkg -i"| D["🖥️ Workstation<br/>(Ryzen 9 5950X + RX 6950 XT)"]
+    B4 -->|"💻 sudo apt install ./linux-*.deb"| D["🖥️ Workstation<br/>"]
 
     style Job1 fill:#1a202c,stroke:#319795,color:#fff
     style Job2 fill:#1a202c,stroke:#2b6cb0,color:#fff
