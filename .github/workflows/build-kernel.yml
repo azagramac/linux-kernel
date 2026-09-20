@@ -235,15 +235,6 @@ jobs:
           name: prepared-kernel-source
           path: kernel_build
 
-      - name: 🚀 Expand Swap Space for Pahole/BTF
-        run: |
-          swapoff /swapfile 2>/dev/null || true
-          fallocate -l 10G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=10240
-          chmod 600 /swapfile
-          mkswap /swapfile
-          swapon /swapfile
-          free -h 2>/dev/null || grep -E "MemTotal|MemAvailable|SwapTotal|SwapFree" /proc/meminfo
-
       - name: 🐧 Build kernel
         if: ${{ github.event_name != 'pull_request' }}
         working-directory: kernel_build
