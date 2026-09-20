@@ -383,23 +383,23 @@ jobs:
           **Urgency:** $URGENCY  
           **Maintainer:** $MAINTAINER  
           **Changed-By:** $CHANGED_BY  
-          
+
           ## 📝 Description:
           $DESCRIPTION
-          
+
           ## 🔄 ChangeLog:
           $GIT_CHANGELOG
-          
+
           ## ✅ Checksums-Sha1:
           \`\`\`bash
           $SHA1
           \`\`\`
-          
+
           ## ✅ Checksums-Sha256:
           \`\`\`bash
           $SHA256
           \`\`\`
-          
+
           ## 📦 Files:
           \`\`\`bash
           $FILES
