@@ -58,7 +58,7 @@ jobs:
       - name: 🛠️ Prepare container base tools
         run: |
           apt-get update -qq
-          apt-get install -y git sudo curl tar xz-utils
+          apt-get install -y git sudo curl tar xz-utils procps
 
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
@@ -84,7 +84,7 @@ jobs:
           df -h /host / || df -h
           echo "========================================="
           echo "🧠 MEMORY & SWAP STATUS:"
-          free -h
+          free -h 2>/dev/null || grep -E "MemTotal|MemAvailable|SwapTotal|SwapFree" /proc/meminfo
           echo "========================================="
           echo "🛠️ TOOLCHAIN VERSIONS:"
           echo "GCC: $(gcc --version | head -n1)"
@@ -208,7 +208,7 @@ jobs:
       - name: 🛠️ Prepare container base tools
         run: |
           apt-get update -qq
-          apt-get install -y git sudo curl tar xz-utils
+          apt-get install -y git sudo curl tar xz-utils procps
 
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
@@ -242,7 +242,7 @@ jobs:
           chmod 600 /swapfile
           mkswap /swapfile
           swapon /swapfile
-          free -h
+          free -h 2>/dev/null || grep -E "MemTotal|MemAvailable|SwapTotal|SwapFree" /proc/meminfo
 
       - name: 🐧 Build kernel
         if: ${{ github.event_name != 'pull_request' }}
