@@ -213,6 +213,43 @@ Hardware
 | Target Architecture | Zen 3               |
 | Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="quiet amdgpu.ppfeaturemask=0xffffffff zswap.enabled=1 zswap.compressor=lzo"` |
 
+### 📦 Build Dependencies
+
+```bash
+sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc bison flex zstd \
+  libdw-dev libelf-dev libssl-dev libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch kmod perl mawk tar xz-utils git
+
+```
+
+| Paquete | Versión |
+|---|---|
+| `build-essential` | `12.12` |
+| `gcc-14` | `14.2.0-19` |
+| `g++-14` | `14.2.0-19` |
+| `fakeroot` | `1.37.1.1-1` |
+| `bc` | `1.07.1-4` |
+| `bison` | `2:3.8.2+dfsg-1+b2` |
+| `flex` | `2.6.4-8.2+b4` |
+| `zstd` | `1.5.7+dfsg-1` |
+| `libdw-dev` | `0.192-4` |
+| `libelf-dev` | `0.192-4` |
+| `libssl-dev` | `3.5.7-1~deb13u2` |
+| `libncurses-dev` | `6.5+20250216-2` |
+| `dwarves` | `1.30-1` |
+| `debhelper` | `13.24.2` |
+| `rsync` | `3.4.1+ds1-5+deb13u4` |
+| `python3` | `3.13.5-1` |
+| `curl` | `8.14.1-2+deb13u5` |
+| `jq` | `1.7.1-6+deb13u3` |
+| `patch` | `2.8-2` |
+| `kmod` | `34.2-2` |
+| `perl` | `5.40.1-6+deb13u1` |
+| `mawk` | `1.3.4.20250131-1` |
+| `tar` | `1.35+dfsg-3.1` |
+| `xz-utils` | `5.8.1-1+deb13u1` |
+| `git` | `1:2.47.3-0+deb13u1` |
+
+
 ### 🧠 CPU
 | Component         | Details                                          |
 | ----------------- | ------------------------------------------------ |
