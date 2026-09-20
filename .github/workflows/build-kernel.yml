@@ -53,28 +53,44 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: debian:trixie
+      options: -v /:/host
     steps:
       - name: 🛠️ Prepare container base tools
         run: |
           apt-get update -qq
-          apt-get install -y git sudo curl tar xz-utils
+          apt-get install -y git sudo curl tar xz-utils procps
 
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 10
 
-      - name: 🧹 Clean up space
+      - name: 🧹 Clean up host runner space
         run: |
-          apt-get update -qq && apt-get install -y sudo
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache || true
+          rm -rf /host/usr/share/dotnet /host/usr/local/lib/android /host/opt/ghc /host/opt/hostedtoolcache || true
           df -h
 
       - name: ⚙️ Install build dependencies
         run: |
-          sudo apt install -y build-essential gcc-14 g++-14 bc bison flex libssl-dev patch dwarves jq curl kmod
+          sudo apt install -y git build-essential gcc-14 g++-14 fakeroot bc bison flex libdw-dev libelf-dev libssl-dev \
+            libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch kmod
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+
+      - name: 📊 Audit Runner Resources & Toolchain
+        run: |
+          echo "========================================="
+          echo "🖥️ HOST RUNNER DISK SPACE:"
+          df -h /host / || df -h
+          echo "========================================="
+          echo "🧠 MEMORY & SWAP STATUS:"
+          free -h 2>/dev/null || grep -E "MemTotal|MemAvailable|SwapTotal|SwapFree" /proc/meminfo
+          echo "========================================="
+          echo "🛠️ TOOLCHAIN VERSIONS:"
+          echo "GCC: $(gcc --version | head -n1)"
+          echo "G++: $(g++ --version | head -n1)"
+          echo "Pahole: $(pahole --version 2>&1 || echo "Not found")"
+          echo "=========================================" 
 
       - name: ⚡ Setup Compiler Cache (ccache)
         uses: actions/cache@v6
@@ -170,6 +186,7 @@ jobs:
           echo "🏷️ Kernel to be built: $(make kernelrelease)"
 
       - name: 📤 Upload prepared kernel source artifact
+        if: ${{ github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v7
         with:
           name: prepared-kernel-source
@@ -179,9 +196,11 @@ jobs:
   build-and-release:
     name: 🐧 2. Build Kernel & Publish Release
     needs: prepare
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     container:
       image: debian:trixie
+      options: -v /:/host
     outputs:
       kernel_version: ${{ steps.get_version.outputs.version }}
       release_description: ${{ steps.release_body.outputs.description }}
@@ -189,7 +208,7 @@ jobs:
       - name: 🛠️ Prepare container base tools
         run: |
           apt-get update -qq
-          apt-get install -y git sudo curl tar xz-utils
+          apt-get install -y git sudo curl tar xz-utils procps
 
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
@@ -216,12 +235,22 @@ jobs:
           name: prepared-kernel-source
           path: kernel_build
 
+      - name: 🚀 Expand Swap Space for Pahole/BTF
+        run: |
+          swapoff /swapfile 2>/dev/null || true
+          fallocate -l 10G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=10240
+          chmod 600 /swapfile
+          mkswap /swapfile
+          swapon /swapfile
+          free -h 2>/dev/null || grep -E "MemTotal|MemAvailable|SwapTotal|SwapFree" /proc/meminfo
+
       - name: 🐧 Build kernel
         if: ${{ github.event_name != 'pull_request' }}
         working-directory: kernel_build
         shell: bash
         run: |
           set -o pipefail
+          export DEB_BUILD_OPTIONS="parallel=$(nproc)"
           chmod -R +x scripts/
           find . -type f \( -name "*.sh" -o -name "*.pl" -o -name "*.py" \) -exec chmod +x {} +
           KERNEL_VER=$(make kernelversion)
