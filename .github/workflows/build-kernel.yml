@@ -187,7 +187,7 @@ jobs:
       - name: 🧹 Clean up host runner space & drop RAM caches
         run: |
           rm -rf /host/usr/share/dotnet /host/usr/local/lib/android /host/opt/ghc /host/opt/hostedtoolcache || true
-          sync && sysctl -w vm.drop_caches=3 || true
+          sync
           df -h /host / || df -h
 
       - name: 📊 Audit Runner Resources & Toolchain
