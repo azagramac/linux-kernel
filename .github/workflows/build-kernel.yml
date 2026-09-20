@@ -187,8 +187,13 @@ jobs:
       - name: 🧹 Clean up host runner space & drop RAM caches
         run: |
           rm -rf /host/usr/share/dotnet /host/usr/local/lib/android /host/opt/ghc /host/opt/hostedtoolcache || true
-          sync
-          df -h /host / || df -h
+
+      - name: ⚙️ Install build dependencies
+        run: |
+          sudo apt install -y git build-essential gcc-14 g++-14 fakeroot bc bison flex libdw-dev libelf-dev libssl-dev \
+            libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch kmod
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
       - name: 📊 Audit Runner Resources & Toolchain
         run: |
@@ -203,15 +208,8 @@ jobs:
           echo "GCC: $(gcc --version | head -n1)"
           echo "G++: $(g++ --version | head -n1)"
           echo "Pahole: $(pahole --version 2>&1 || echo "Not found")"
-          echo "=========================================" 
-
-      - name: ⚙️ Install build dependencies
-        run: |
-          sudo apt install -y git build-essential gcc-14 g++-14 fakeroot bc bison flex libdw-dev libelf-dev libssl-dev \
-            libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch kmod
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
-
+          echo "========================================="
+          sync
 
       - name: 📥 Download prepared kernel source
         uses: actions/download-artifact@v8
