@@ -71,7 +71,6 @@ jobs:
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
-
       - name: 📥 Download kernel tarball
         if: ${{ inputs.url != '' || (inputs.tag == '' && github.event_name == 'pull_request') }}
         id: download_tarball
@@ -195,22 +194,6 @@ jobs:
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
-      - name: 📊 Audit Runner Resources & Toolchain
-        run: |
-          echo "========================================="
-          echo "🖥️ HOST RUNNER DISK SPACE:"
-          df -h
-          echo "========================================="
-          echo "🧠 MEMORY & SWAP STATUS:"
-          free -h 2>/dev/null || grep -E "MemTotal|MemAvailable|SwapTotal|SwapFree" /proc/meminfo
-          echo "========================================="
-          echo "🛠️ TOOLCHAIN VERSIONS:"
-          echo "GCC: $(gcc --version | head -n1)"
-          echo "G++: $(g++ --version | head -n1)"
-          echo "Pahole: $(pahole --version 2>&1 || echo "Not found")"
-          echo "========================================="
-          sync
-
       - name: 📥 Download prepared kernel source
         uses: actions/download-artifact@v8
         with:
@@ -223,12 +206,73 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+
           export DEB_BUILD_OPTIONS="parallel=$(nproc)"
+
           chmod -R +x scripts/
           find . -type f \( -name "*.sh" -o -name "*.pl" -o -name "*.py" \) -exec chmod +x {} +
+
           KERNEL_VER=$(make kernelversion)
           LOCAL_VER="$KERNEL_LOCALVERSION"
-          make -j$(nproc) bindeb-pkg KCFLAGS="$ARCH_FLAGS" LOCALVERSION="$LOCAL_VER" KDEB_PKGVERSION="$KERNEL_VER$LOCAL_VER" 2>&1 | tee ../build.log
+
+          echo "========================================="
+          echo "🐧 Environment Build"
+          echo "========================================="
+          echo "Kernel version : $KERNEL_VER"
+          echo "Local version  : $LOCAL_VER"
+          echo "Architecture   : $ARCH_FLAGS"
+          echo "Build jobs     : $(nproc)"
+          echo "GCC            : $(gcc --version | head -n1)"
+          echo "G++            : $(g++ --version | head -n1)"
+          echo "Pahole         : $(pahole --version 2>&1 || echo 'Not found')"
+          echo "Make           : $(make --version | head -n1)"
+          echo "========================================="
+
+          BUILD_LOG="../build.log"
+          ERROR_LOG="../build-error.log"
+
+          rm -f "$BUILD_LOG" "$ERROR_LOG"
+
+          echo "🚀 Starting kernel compilation..."
+
+          if make -j$(nproc) bindeb-pkg \
+              KCFLAGS="$ARCH_FLAGS" \
+              LOCALVERSION="$LOCAL_VER" \
+              KDEB_PKGVERSION="$KERNEL_VER$LOCAL_VER" 2>&1 | tee "$BUILD_LOG"
+          then
+              echo "========================================="
+              echo "✅ Kernel compilation completed successfully"
+              echo "========================================="
+          else
+              BUILD_EXIT=${PIPESTATUS[0]}
+
+              echo "========================================="
+              echo "❌ Kernel compilation FAILED"
+              echo "Exit code: $BUILD_EXIT"
+              echo "========================================="
+
+              {
+                echo "========================================="
+                echo "POSSIBLE ROOT CAUSES"
+                echo "========================================="
+
+                grep -nEi \
+                  '(^|[[:space:]])(error|fatal):|undefined reference|cannot find|No such file|Killed|out of memory|oom|pahole|BTF|DWARF|segmentation fault|internal compiler error' \
+                  "$BUILD_LOG" || true
+
+                echo
+                echo "========================================="
+                echo "LAST 150 LINES"
+                echo "========================================="
+
+                tail -n 150 "$BUILD_LOG"
+              } > "$ERROR_LOG"
+
+              echo
+              cat "$ERROR_LOG"
+
+              exit "$BUILD_EXIT"
+          fi
 
       - name: 🆔 Get compiled kernel version
         if: ${{ github.event_name != 'pull_request' }}
@@ -237,14 +281,32 @@ jobs:
         run: |
           echo "version=$(make kernelrelease)" >> $GITHUB_OUTPUT
 
-      - name: 📦 Move .deb & log artifacts (Robust Error Handling)
-        if: ${{ github.event_name != 'pull_request' }}
+      - name: 📦 Move .deb & log artifacts
+        if: ${{ github.event_name != 'pull_request' && always() }}
         run: |
           mkdir -p artifacts
-          find . -name "*.deb" -exec cp {} artifacts/ \;
-          find . -name "*.changes" -exec cp {} artifacts/ \;
-          find . -name "*.buildinfo" -exec cp {} artifacts/ \;
-          if [ -f build.log ]; then cp build.log artifacts/; fi
+
+          echo "📦 Collecting build artifacts..."
+
+          find kernel_build -name "*.deb" -exec cp {} artifacts/ \; || true
+          find kernel_build -name "*.changes" -exec cp {} artifacts/ \; || true
+          find kernel_build -name "*.buildinfo" -exec cp {} artifacts/ \; || true
+
+          if [ -f build.log ]; then
+            cp build.log artifacts/build.log
+            echo "✅ build.log saved"
+          fi
+
+          if [ -f build-error.log ]; then
+            cp build-error.log artifacts/build-error.log
+            echo "❌ build-error.log saved"
+          fi
+
+          echo
+          echo "========================================="
+          echo "📁 Collected artifacts"
+          echo "========================================="
+          ls -lh artifacts/
 
       - name: 📤 Upload compiled kernel artifacts
         if: ${{ github.event_name != 'pull_request' && always() }}
@@ -387,15 +449,17 @@ jobs:
           BUILD_STATUS: ${{ needs.build-and-release.result }}
           KERNEL_VERSION: ${{ needs.build-and-release.outputs.kernel_version }}
           PKG_DESCRIPTION: ${{ needs.build-and-release.outputs.release_description }}
+          KERNEL_CONFIG: ${{ env.KERNEL_CONFIG }}
+          KERNEL_URL: ${{ env.KERNEL_URL }}
+          KERNEL_TAG: ${{ env.KERNEL_TAG }}
+          KERNEL_LOCALVERSION: ${{ env.KERNEL_LOCALVERSION }}
+          KERNEL_PATCH: ${{ env.KERNEL_PATCH }}
         run: |
           RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-          if [ -f artifacts/build.log ]; then
-            cp artifacts/build.log build.log
-          fi
-
           if [ "$BUILD_STATUS" = "success" ]; then
             CLEAN_DESC=$(echo "$PKG_DESCRIPTION" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+
             if [ -z "$CLEAN_DESC" ]; then
               CLEAN_DESC=" - No disponible"
             fi
@@ -412,17 +476,32 @@ jobs:
 
           else
             ERROR_LOG=""
-            if [ -f build.log ]; then
-              ERROR_SNIPPET=$(tail -n 12 build.log | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+
+            if [ -f artifacts/build-error.log ]; then
+              ERROR_SNIPPET=$(tail -n 40 artifacts/build-error.log | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+
               ERROR_LOG="
-            📋 <b>Últimas líneas del log de error:</b>
-            <pre>${ERROR_SNIPPET}</pre>"
+              📋 <b>Diagnóstico del error:</b>
+              <pre>${ERROR_SNIPPET}</pre>"
+
+            elif [ -f artifacts/build.log ]; then
+              ERROR_SNIPPET=$(tail -n 40 artifacts/build.log | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+
+              ERROR_LOG="
+              📋 <b>Últimas líneas del build.log:</b>
+              <pre>${ERROR_SNIPPET}</pre>"
+
+            else
+              ERROR_LOG="
+              ⚠️ <b>No se encontró ningún log de compilación.</b>"
             fi
 
             SRC_INFO="${KERNEL_TAG}"
+
             if [ -z "$SRC_INFO" ]; then
               SRC_INFO="${KERNEL_URL}"
             fi
+
             if [ -z "$SRC_INFO" ]; then
               SRC_INFO="No especificado"
             fi
@@ -433,13 +512,16 @@ jobs:
             • <b>Config:</b> ${KERNEL_CONFIG:-N/A}
             • <b>Origen:</b> ${SRC_INFO}
             • <b>Localversion:</b> ${KERNEL_LOCALVERSION:-Ninguna}
-            • <b>Parche:</b> ${KERNEL_PATCH:-Ninguno}${ERROR_LOG}
+            • <b>Parche:</b> ${KERNEL_PATCH:-Ninguno}
+            ${ERROR_LOG}
 
             🏷️ <b>Workflow:</b>
             🔗 <a href=\"${RUN_URL}\">Ver logs completos en GitHub Actions</a>"
           fi
 
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+          curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHATID}" \
             --data-urlencode "parse_mode=HTML" \
-            --data-urlencode "text=$MESSAGE" >/dev/null 2>&1
+            --data-urlencode "text=$MESSAGE" \
+            >/dev/null 2>&1
