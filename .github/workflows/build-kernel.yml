@@ -72,9 +72,25 @@ jobs:
 
       - name: ⚙️ Install build dependencies
         run: |
-          sudo apt install -y build-essential gcc-14 g++-14 bc bison flex libssl-dev patch dwarves jq curl kmod
+          sudo apt install -y git build-essential gcc-14 g++-14 fakeroot bc bison flex libdw-dev libelf-dev libssl-dev \
+            libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch kmod
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+
+      - name: 📊 Audit Runner Resources & Toolchain
+        run: |
+          echo "========================================="
+          echo "🖥️ HOST RUNNER DISK SPACE:"
+          df -h /host / || df -h
+          echo "========================================="
+          echo "🧠 MEMORY & SWAP STATUS:"
+          free -h
+          echo "========================================="
+          echo "🛠️ TOOLCHAIN VERSIONS:"
+          echo "GCC: $(gcc --version | head -n1)"
+          echo "G++: $(g++ --version | head -n1)"
+          echo "Pahole: $(pahole --version 2>&1 || echo "Not found")"
+          echo "=========================================" 
 
       - name: ⚡ Setup Compiler Cache (ccache)
         uses: actions/cache@v6
@@ -170,6 +186,7 @@ jobs:
           echo "🏷️ Kernel to be built: $(make kernelrelease)"
 
       - name: 📤 Upload prepared kernel source artifact
+        if: ${{ github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v7
         with:
           name: prepared-kernel-source
@@ -179,6 +196,7 @@ jobs:
   build-and-release:
     name: 🐧 2. Build Kernel & Publish Release
     needs: prepare
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     container:
       image: debian:trixie
@@ -219,10 +237,11 @@ jobs:
 
       - name: 🚀 Expand Swap Space for Pahole/BTF
         run: |
-          sudo fallocate -l 10G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=10240
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          swapoff /swapfile 2>/dev/null || true
+          fallocate -l 10G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=10240
+          chmod 600 /swapfile
+          mkswap /swapfile
+          swapon /swapfile
           free -h
 
       - name: 🐧 Build kernel
