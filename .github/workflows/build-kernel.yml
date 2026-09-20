@@ -288,9 +288,9 @@ jobs:
 
           echo "📦 Collecting build artifacts..."
 
-          find kernel_build -name "*.deb" -exec cp {} artifacts/ \; || true
-          find kernel_build -name "*.changes" -exec cp {} artifacts/ \; || true
-          find kernel_build -name "*.buildinfo" -exec cp {} artifacts/ \; || true
+          find . -name "*.deb" -exec cp {} artifacts/ \; || true
+          find . -name "*.changes" -exec cp {} artifacts/ \; || true
+          find . -name "*.buildinfo" -exec cp {} artifacts/ \; || true
 
           if [ -f build.log ]; then
             cp build.log artifacts/build.log
