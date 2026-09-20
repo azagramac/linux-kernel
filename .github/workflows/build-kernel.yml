@@ -71,14 +71,6 @@ jobs:
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
-      - name: ⚡ Setup Compiler Cache (ccache)
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ccache
-          key: ccache-${{ runner.os }}-${{ env.KERNEL_CONFIG }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ runner.os }}-${{ env.KERNEL_CONFIG }}-
-            ccache-${{ runner.os }}-
 
       - name: 📥 Download kernel tarball
         if: ${{ inputs.url != '' || (inputs.tag == '' && github.event_name == 'pull_request') }}
@@ -220,14 +212,6 @@ jobs:
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
-      - name: ⚡ Setup Compiler Cache (ccache)
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ccache
-          key: ccache-${{ runner.os }}-${{ env.KERNEL_CONFIG }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ runner.os }}-${{ env.KERNEL_CONFIG }}-
-            ccache-${{ runner.os }}-
 
       - name: 📥 Download prepared kernel source
         uses: actions/download-artifact@v8
