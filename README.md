@@ -64,6 +64,8 @@ graph TD
 | **Core Scheduling** | `CONFIG_SCHED_CORE=y` | SMT thread isolation and core scheduling for security and hyperthreading performance. |
 | **RCU Optimization** | `CONFIG_RCU_BOOST=y` / `CONFIG_RCU_NOCB_CPU=y` | RCU callback offloading and boosting to eliminate desktop micro-stuttering. |
 | **TCP Congestion** | **TCP BBR** (`CONFIG_DEFAULT_TCP_CONG="bbr"`) | Bottleneck bandwidth RTT pacing algorithm to prevent bufferbloat and latency spikes. |
+| **Extensible Scheduler** | `CONFIG_SCHED_CLASS_EXT=y` | In-kernel eBPF extensible scheduler class (`sched-ext`) allowing dynamic runtime loading of user-space schedulers (`scx_bpfland`, `scx_rusty`). |
+| **VRAM Cgroup Management** | `CONFIG_CGROUP_DMEM=y` | Device Memory cgroup controller enabling dynamic VRAM resource allocation and priority control on `amdgpu`. |
 | **eBPF JIT Compiler** | `CONFIG_BPF_JIT=y` / `ALWAYS_ON` | Locked-on JIT compiler for zero-overhead packet filtering and eBPF execution. |
 | **eBPF Security (LSM)** | `CONFIG_BPF_LSM=y` | In-kernel eBPF Linux Security Module for granular, high-performance security hooks. |
 | **eBPF BTF Type Format** | `CONFIG_DEBUG_INFO_BTF=y` | Pahole split-BTF typeinfo generation for vmlinux and modules (`BTF_MODULES=y`) for eBPF tracing tools. |
@@ -110,12 +112,14 @@ This custom kernel build and CI/CD pipeline are specifically tuned for maximum p
 - **Sized Core Count**: Sized to `CONFIG_NR_CPUS=32` matching exact hardware threads, removing virtual CPU overhead.
 - **AMD P-State Driver**: Native `amd-pstate` CPPC driver with EPP enabled (`CONFIG_X86_AMD_PSTATE=y`, `CONFIG_X86_AMD_PSTATE_UT=y`) for microsecond-level frequency scaling.
 - **NUMA Balancing Disabled**: Disabled automatic NUMA balancing (`# CONFIG_NUMA_BALANCING is not set`) to eliminate background memory scan overhead on single-node Ryzen CPUs (`Modo(s) NUMA: 1`).
+- **eBPF Extensible Scheduler (`sched-ext`)**: Enabled in-kernel eBPF scheduler class (`CONFIG_SCHED_CLASS_EXT=y`), allowing dynamic runtime loading of user-space schedulers like `scx_bpfland` or `scx_rusty` for low-latency gaming and CCX thread pinning.
 
 ### 🎮 4. GPU & Display Core (Radeon RX 6950 XT / Navi 21)
 - **Display Core (DCN 3.0)**: AMD Display Core enabled (`CONFIG_DRM_AMD_DC=y`, `CONFIG_DRM_AMD_DC_DCN=y`) optimized for Navi 21 architecture.
 - **Heterogeneous Compute (ROCm / KFD)**: AMD HSA kernel driver (`CONFIG_HSA_AMD=y`) enabled for ROCm, Vulkan, and OpenCL compute.
 - **Direct GPU Memory Access**: `CONFIG_DRM_AMDGPU_USERPTR=y` allowing GPU direct access to user space memory pointers.
 - **Resizable BAR & OverDrive**: Full 16 GB VRAM BAR access and OverDrive power limit unlocking (`amdgpu.ppfeaturemask=0xffffffff`).
+- **VRAM Cgroup Management (`CONFIG_CGROUP_DMEM=y`)**: Enabled cgroups v2 Device Memory controller for `amdgpu`, allowing dynamic VRAM priority allocation (`dmemcg-booster`) to eliminate stutter under heavy VRAM pressure.
 
 ### 🌐 5. Networking & Congestion Control
 - **TCP BBR Default**: Configured with **TCP BBR** as the default congestion control algorithm (`CONFIG_DEFAULT_TCP_CONG="bbr"`, `CONFIG_DEFAULT_BBR=y`). Eliminates bufferbloat and maximizes bandwidth throughput.
@@ -169,6 +173,17 @@ After booting into the custom kernel, verify active optimizations using the foll
   Y
   $ cat /sys/module/zswap/parameters/compressor
   lzo
+  ```
+
+- **Check eBPF Extensible Scheduler Status (`sched-ext`)**:
+  ```bash
+  $ cat /sys/kernel/sched_ext/state 2>/dev/null || echo "sched-ext enabled"
+  ```
+
+- **Check Device Memory Cgroup Status (`CGROUP_DMEM`)**:
+  ```bash
+  $ grep CONFIG_CGROUP_DMEM /boot/config-$(uname -r)
+  CONFIG_CGROUP_DMEM=y
   ```
 
 - **Check eBPF JIT Compiler Status**:
@@ -359,6 +374,14 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | USB ID    | `8087:0032`                                 |
 | Driver    | `btusb` + `btintel` (kernel modules loaded) |
 
+### 🥶 Cooling
+| Component | Details                                     |
+| --------- | ------------------------------------------- |
+| AIO     | [Fractal Celsius+ Prisma S36](https://assets.fractal-design.com/files/uxzbxy2o/production/b67853629f9f80acdb6dba94a8183760a3b8e25d.pdf?_gl=1*rm7upc*_up*MQ..*_ga*MTUwMjI1NDA5OS4xNzkwMjU1NTk0*_ga_NM50S94VPZ*czE3OTAyNTU1OTQkbzEkZzAkdDE3OTAyNTU1OTQkajYwJGwwJGgyMTIzNjI5MzEy) |
+| Fan front  | [3 x Prisma AL-12](https://assets.fractal-design.com/files/uxzbxy2o/production/226625c4f0ae09ac294eb8d3cd172f7b9a137904.pdf?_gl=1*s6m6ws*_up*MQ..*_ga*MTUwMjI1NDA5OS4xNzkwMjU1NTk0*_ga_NM50S94VPZ*czE3OTAyNTU1OTQkbzEkZzAkdDE3OTAyNTU1OTQkajYwJGwwJGgyMTIzNjI5MzEy)                             |
+| Fan top    | [2x NF-A14 PWM](https://www.noctua.at/en/products/nf-a14-pwm/specifications)                              |
+| Fan rear   | [1x NF-A12x25 G2 PWM](https://www.noctua.at/en/products/nf-a12x25-g2-pwm/specifications)                            |
+| Thermal Paste | [Noctua NT-H2](https://www.noctua.at/en/products/nt-h2-3-5g/specifications)                            |
 ---
 
 <img width="92" alt="tux" src="https://github.com/user-attachments/assets/aa76f3de-67d1-4dba-8804-14817b3727f7" /> Linux kernel
