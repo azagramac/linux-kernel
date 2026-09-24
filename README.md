@@ -315,7 +315,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 ### 🧩 Motherboard
 | Component    | Details                              |
 | ------------ | ------------------------------------ |
-| Motherboard  | [Gigabyte X570 AORUS ELITE](https://www.gigabyte.com/Motherboard/X570-AORUS-ELITE-rev-10/sp) (rev. 1.0) |
+| Motherboard  | [Gigabyte X570 AORUS ELITE]([https://www.gigabyte.com/Motherboard/X570-AORUS-ELITE-rev-10/sp](https://www.gigabyte.com/latam/Motherboard/X570-AORUS-ELITE-rev-10/sp)) (rev. 1.0) |
 | Chipset      | AMD X570                             |
 | Manufacturer | Gigabyte Technology Co., Ltd.        |
 | BIOS         | AMI (American Megatrends)            |
@@ -354,7 +354,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | PCI ID     | `1102:0012`                |
 | Driver     | ALSA (`snd_ca0132`)      |
 | Hi-res Audio | [Enabled](https://blog.azagra.dev/linux/high-res-audio-192-khz-en-debian-13-sound-blaster-z) `32 bits / 192kHz` |
-| Speakers     | [Edifier M90](https://link.amazon/B04QwlNPx)       |
+| Speakers     | [Edifier M60](https://link.amazon/B07gPP5Sg)       |
 
 ### 🌐 Network — Ethernet
 | Component  | Details            |
