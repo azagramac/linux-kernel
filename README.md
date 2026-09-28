@@ -1,3 +1,11 @@
+<img width="92" alt="tux" src="https://github.com/user-attachments/assets/aa76f3de-67d1-4dba-8804-14817b3727f7" /> Linux kernel
+============
+
+The Linux kernel is the core of any Linux operating system. It manages hardware,
+system resources, and provides the fundamental services for all other software.
+
+-----------
+
 ![Linux Kernel](https://img.shields.io/badge/dynamic/json?label=Linux%20Kernel&query=latest_stable.version&url=https%3A%2F%2Fwww.kernel.org%2Freleases.json&color=f5be04)
 [![Kernel Version](https://img.shields.io/badge/Kernel-6.19.14--ryzen9-blue.svg)](https://github.com/azagramac/linux-kernel/releases)
 
@@ -5,16 +13,12 @@
 [![Target OS](https://img.shields.io/badge/OS-Debian%2013%20Trixie-a80030.svg)](https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/)
 [![Compiler](https://img.shields.io/badge/Compiler-GCC%2014.2.0-green.svg)](https://gcc.gnu.org/gcc-14/)
 
-<img width="1280" height="633" alt="image" src="https://github.com/user-attachments/assets/2ac771d9-90bb-4ab6-a514-c74cd15582ef" />
-
-
 ---
 
-Last build
+## Last build4
 
----
+<img width="972" height="533" alt="image" src="https://github.com/user-attachments/assets/b3e3ed66-9de7-4370-b31e-2c5c6f1339fc" />
 
-<img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/38fd71b7-4228-4da3-a886-f994e157db3a" />
 
 ---
 
@@ -54,24 +58,27 @@ graph TD
 
 | Subsystem | Configuration / Option | Engineering Rationale |
 | :--- | :--- | :--- |
-| **Target Architecture** | `-march=znver3` (`CONFIG_X86_NATIVE_CPU=y`) | Native AVX2/BMI2 instruction optimization for AMD Zen 3 microarchitecture. |
+| **Native CPU Optimization** | `CONFIG_X86_NATIVE_CPU=y` + `KCFLAGS="-march=znver3"` | Two-layer native optimization: `X86_NATIVE_CPU` enables Kconfig CPU feature selection based on the build host ISA; `-march=znver3` directs GCC to emit Zen 3-specific instructions (AVX2/BMI2/VAES). Both are complementary and required for full native optimization. |
 | **Scheduler & Preemption**| `PREEMPT_BUILD` / `PREEMPT=y` | Full kernel preemption for minimal input and audio processing latency. |
 | **Timer Frequency** | `1000 Hz` (`CONFIG_HZ_1000=y`) | High-resolution tick frequency for desktop responsiveness and frame pacing. |
-| **Tickless Kernel** | `NO_HZ_FULL=y` | Adaptive tickless kernel to eliminate periodic timer interrupts on heavy workloads. |
+| **Tickless Kernel** | `CONFIG_NO_HZ_IDLE=y` | Idle-tickless kernel: timer interrupts suppressed on idle CPUs, reducing power and wakeup overhead. `NO_HZ_FULL` is intentionally not enabled to avoid scheduler complexity. |
 | **CPU Core Sizing** | `CONFIG_NR_CPUS=32` | Hardcapped to 32 threads matching Ryzen 9 5950X, eliminating virtual CPU overhead. |
 | **CPU Frequency Scaling**| `amd-pstate` EPP (`CONFIG_X86_AMD_PSTATE=y`) | Hardware CPPC microsecond-level core frequency and voltage adjustments. |
-| **NUMA Balancing** | `# CONFIG_NUMA_BALANCING is not set` | Disabled NUMA balancing to eliminate periodic cross-node scan overhead on 1-NUMA Ryzen CPUs. |
+| **NUMA** | `CONFIG_NUMA=y` / `# CONFIG_NUMA_BALANCING is not set` | NUMA infrastructure retained (`CONFIG_AMD_NUMA=y`, `CONFIG_X86_64_ACPI_NUMA=y`); automatic NUMA memory balancing disabled to eliminate background scan overhead on this single-node Ryzen system. |
 | **Core Scheduling** | `CONFIG_SCHED_CORE=y` | SMT thread isolation and core scheduling for security and hyperthreading performance. |
-| **RCU Optimization** | `CONFIG_RCU_BOOST=y` / `CONFIG_RCU_NOCB_CPU=y` | RCU callback offloading and boosting to eliminate desktop micro-stuttering. |
 | **TCP Congestion** | **TCP BBR** (`CONFIG_DEFAULT_TCP_CONG="bbr"`) | Bottleneck bandwidth RTT pacing algorithm to prevent bufferbloat and latency spikes. |
-| **Extensible Scheduler** | `CONFIG_SCHED_CLASS_EXT=y` | In-kernel eBPF extensible scheduler class (`sched-ext`) allowing dynamic runtime loading of user-space schedulers (`scx_bpfland`, `scx_rusty`). |
+| **Extensible Scheduler** | `CONFIG_SCHED_CLASS_EXT=y` | In-kernel `sched-ext` BPF scheduler class. Enables the mechanism for dynamically loading external BPF schedulers (`scx_bpfland`, `scx_rusty`) at runtime — they are **not** embedded in the kernel. Depends on BPF infrastructure (`CONFIG_BPF=y`, `CONFIG_BPF_SYSCALL=y`). |
+| **Extended Group Sched** | `CONFIG_EXT_GROUP_SCHED=y` | Extended group scheduling infrastructure used by `sched-ext` and cgroup-aware scheduling policies (`CGROUP_BPF`, `CGROUP_SCHED`). |
 | **VRAM Cgroup Management** | `CONFIG_CGROUP_DMEM=y` | Device Memory cgroup controller enabling dynamic VRAM resource allocation and priority control on `amdgpu`. |
-| **eBPF JIT Compiler** | `CONFIG_BPF_JIT=y` / `ALWAYS_ON` | Locked-on JIT compiler for zero-overhead packet filtering and eBPF execution. |
+| **eBPF JIT Compiler** | `CONFIG_BPF_JIT=y` / `CONFIG_BPF_JIT_DEFAULT_ON=y` | JIT compiler enabled and active by default; `BPF_JIT_ALWAYS_ON` is intentionally not set, preserving runtime control via `net.core.bpf_jit_enable`. |
 | **eBPF Security (LSM)** | `CONFIG_BPF_LSM=y` | In-kernel eBPF Linux Security Module for granular, high-performance security hooks. |
 | **eBPF BTF Type Format** | `CONFIG_DEBUG_INFO_BTF=y` | Pahole split-BTF typeinfo generation for vmlinux and modules (`BTF_MODULES=y`) for eBPF tracing tools. |
 | **Async Socket I/O** | `IO_URING_ZCRX=y` | Zero-copy packet reception for ultra-fast network socket I/O. |
-| **GPU Driver & Display** | `amdgpu` + Display Core `DCN 3.0` | Native RDNA 2 support, Resizable BAR (ReBAR), and OverDrive power limit unlocking. |
-| **GPU ROCm Compute** | `CONFIG_HSA_AMD=y` / `USERPTR=y` | Native AMD KFD driver for ROCm, OpenCL 3.0, and direct GPU user-pointer memory access. |
+| **GPU Driver** | `CONFIG_DRM_AMDGPU=m` | AMDGPU as loadable kernel module (not built-in). SI/CIK legacy support disabled. Native RDNA 2 support, Resizable BAR (ReBAR), and OverDrive power limit unlocking. |
+| **AMD Display Core** | `CONFIG_DRM_AMD_DC=y` / `CONFIG_DRM_AMD_DC_FP=y` | AMD Display Core with fast-path support for DCN 3.0 (Navi 21 / RX 6950 XT). |
+| **AMD Secure Display** | `CONFIG_DRM_AMD_SECURE_DISPLAY=y` | Secure display path support for AMD GPU. |
+| **AMD Audio Coprocessor** | `CONFIG_DRM_AMD_ACP=y` | AMD Audio CoProcessor driver enabled alongside AMDGPU. |
+| **GPU ROCm Compute** | `CONFIG_HSA_AMD=y` / `CONFIG_DRM_AMDGPU_USERPTR=y` | Native AMD KFD driver for ROCm, OpenCL 3.0, and direct GPU user-pointer memory access. |
 | **PlayStation Gamepads** | `CONFIG_HID_PLAYSTATION=m` / `FF=y` | Sony DualSense (PS5) & DualShock 4 (PS4) controller support with haptic Force Feedback. |
 | **Legacy Radeon Removal**| `# CONFIG_DRM_RADEON is not set` | Legacy Radeon DRM driver disabled to ensure exclusive `amdgpu` driver stack execution. |
 | **AMD IOMMU Isolation** | `CONFIG_AMD_IOMMU=y` (`# INTEL_IOMMU`) | Native AMD Vi IOMMU enabled while stripping unused Intel DMAR overhead. |
@@ -79,14 +86,25 @@ graph TD
 | **Hugepages & Compaction**| `THP MADVISE` + `COMPACTION=y` | Transparent Hugepages THP default set to `madvise` to avoid memory bloat with opt-in THP for games/VMs. |
 | **Hung Task Diagnostics** | `CONFIG_DETECT_HUNG_TASK=y` (120s) | Automatic detection and logging of blocked or hanging kernel threads. |
 | **Stack Unwinder** | `UNWINDER_ORC=y` | Low-overhead ORC call stack unwinding for precise ftrace kernel profiling. |
-| **Hi-Res Audio Driver** | `snd_ca0132` (Sound Core3D) | Dedicated ALSA sound driver configured for 32-bit / 192 kHz high-resolution audio. |
+| **Hi-Res Audio Driver** | `CONFIG_SND_HDA_CODEC_CA0132=m` | CA0132 Sound Core3D HDA codec as loadable module, with DSP firmware support (`CA0132_DSP=y`) for Sound Blaster Z 32-bit / 192 kHz audio. |
+| **CPU Mitigations** | `CONFIG_CPU_MITIGATIONS=y` | Full Spectre/Meltdown/RetBleed/SRSO/SSB/TSA mitigation suite retained — this is not a "performance at all costs" kernel. |
+| **CET / IBT** | `CONFIG_X86_CET=y` / `CONFIG_X86_KERNEL_IBT=y` | Hardware Indirect Branch Tracking for kernel control-flow integrity (supported on Zen 3). |
+| **User Shadow Stack** | `CONFIG_X86_USER_SHADOW_STACK=y` | CET Shadow Stack for user-space return address protection. |
 | **Bloat Trimming** | Disabled unused CPU/GPU/Drivers | Removed Intel/Nvidia drivers, legacy AMD SI/CIK, and unused network vendors. |
 
 ---
 
-## 🛠️ Custom Kernel Optimizations & Performance Features ([config-6.19.14-debian13](https://github.com/azagramac/linux-kernel/blob/master/configs/config-6.19.14-debian13))
+## 🛠️ Custom Kernel Optimizations & Performance Features ([config-6.19.14-debian13](https://github.com/azagramac/linux-kernel/blob/master/configs/stable/config-6.19.14-debian13))
 
-This custom kernel build and CI/CD pipeline are specifically tuned for maximum performance, minimal latency, and zero bloat on **AMD Ryzen 9 5950X (Zen 3)** and **AMD Radeon RX 6950 XT (RDNA 2)** hardware running on Debian 13.
+This custom kernel build and CI/CD pipeline are specifically tuned for **this exact hardware**: AMD Ryzen 9 5950X (Zen 3) and AMD Radeon RX 6950 XT (RDNA 2) running on Debian 13.
+
+The guiding philosophy is **hardware/driver bloat removal while retaining security and diagnostic capabilities**:
+- 🔧 CPU-specific optimization (Zen 3, 32 threads, AMD pstate, PREEMPT, 1000 Hz)
+- 🎮 GPU-specific support (RDNA 2 / amdgpu module, ROCm, VRAM cgroups)
+- 🌐 Targeted network drivers only (I211 + AX210)
+- 🔐 Security retained (all CPU mitigations, CET/IBT, BPF LSM)
+- 🔍 Diagnostics retained (BTF, Ftrace, Kprobes, ORC)
+- 🗑️ Hardware bloat removed (Intel GPU, NVIDIA, legacy Radeon, unused network, legacy buses)
 
 ### 🧹 1. Hardware Trimming & Bloat Elimination
 - **Non-AMD CPU Support Removed**: Disabled Intel, Hygon, Centaur, and Zhaoxin CPU support (`# CONFIG_CPU_SUP_INTEL is not set`, etc.) to streamline kernel execution paths.
@@ -101,21 +119,26 @@ This custom kernel build and CI/CD pipeline are specifically tuned for maximum p
 ### ⏱️ 2. Low-Latency Tuning (Gaming & High-Res Audio)
 - **Full Preemption**: Full preemptible kernel (`CONFIG_PREEMPT_BUILD=y`, `CONFIG_PREEMPT=y`) for immediate task response and minimal audio/input latency.
 - **Timer Frequency (1000 Hz)**: Set timer frequency to `1000 Hz` (`CONFIG_HZ_1000=y`, `CONFIG_HZ=1000`) for precise event timing.
-- **Tickless Full (`NO_HZ_FULL`)**: Adaptive tickless kernel (`CONFIG_NO_HZ_FULL=y`) preventing periodic timer interrupts on heavy workloads and gaming threads.
-- **RCU Prioritization**: RCU boosting (`CONFIG_RCU_BOOST=y`) and offloading (`CONFIG_RCU_NOCB_CPU=y`) to eliminate micro-stuttering.
+- **Tickless Idle (`NO_HZ_IDLE`)**: Idle-tickless kernel (`CONFIG_NO_HZ_IDLE=y`) suppressing timer interrupts on idle CPUs, reducing wakeup overhead. Full tickless mode (`NO_HZ_FULL`) is intentionally not enabled to avoid scheduler complexity on this configuration.
 - **Hi-Res Audio Driver**: Dedicated Sound Blaster Z ALSA driver (`snd_ca0132` / Sound Core3D) configured for 32-bit / 192 kHz low-jitter audio.
 - **PlayStation DualSense & DualShock 4**: Dedicated Sony PlayStation HID driver (`CONFIG_HID_PLAYSTATION=m`, `CONFIG_PLAYSTATION_FF=y`) with full haptic Force Feedback for PS4/PS5 gamepads over USB and Bluetooth.
 
 ### 🧠 3. CPU Optimizations (AMD Ryzen 9 5950X — 16C / 32T)
-- **Native Architecture Compilation**: Target compilation set to **Zen 3** (`-march=znver3` via `KCFLAGS="-march=znver3"`, `CONFIG_X86_NATIVE_CPU=y`).
+- **Native Architecture Compilation — two-layer optimization**:
+  - `CONFIG_X86_NATIVE_CPU=y` — instructs Kconfig to probe the build host CPU and enable matching kernel features (e.g., VAES, AVX2 crypto paths, AMD-specific code paths).
+  - `KCFLAGS="-march=znver3"` — instructs GCC to emit Zen 3-specific instructions throughout the build. Set in the CI workflow (`make bindeb-pkg KCFLAGS="-march=znver3"`).
+  - Both flags are complementary and required for full native optimization; neither alone is sufficient.
 - **Core Scheduling**: Hardware SMT core scheduling enabled (`CONFIG_SCHED_CORE=y`) for thread isolation, security, and hyperthreading gaming performance.
 - **Sized Core Count**: Sized to `CONFIG_NR_CPUS=32` matching exact hardware threads, removing virtual CPU overhead.
 - **AMD P-State Driver**: Native `amd-pstate` CPPC driver with EPP enabled (`CONFIG_X86_AMD_PSTATE=y`, `CONFIG_X86_AMD_PSTATE_UT=y`) for microsecond-level frequency scaling.
-- **NUMA Balancing Disabled**: Disabled automatic NUMA balancing (`# CONFIG_NUMA_BALANCING is not set`) to eliminate background memory scan overhead on single-node Ryzen CPUs (`Modo(s) NUMA: 1`).
-- **eBPF Extensible Scheduler (`sched-ext`)**: Enabled in-kernel eBPF scheduler class (`CONFIG_SCHED_CLASS_EXT=y`), allowing dynamic runtime loading of user-space schedulers like `scx_bpfland` or `scx_rusty` for low-latency gaming and CCX thread pinning.
+- **NUMA Infrastructure**: NUMA support is retained (`CONFIG_NUMA=y`, `CONFIG_AMD_NUMA=y`, `CONFIG_X86_64_ACPI_NUMA=y`) for correct hardware topology detection. Automatic NUMA balancing (`# CONFIG_NUMA_BALANCING is not set`) is disabled to eliminate background memory scan overhead on this single-node Ryzen system.
+- **eBPF Extensible Scheduler (`sched-ext`)**: Enabled in-kernel eBPF scheduler class (`CONFIG_SCHED_CLASS_EXT=y`). This exposes the `sched-ext` API that relies on the kernel BPF infrastructure (`CONFIG_BPF=y`, `CONFIG_BPF_SYSCALL=y`, `CONFIG_BPF_JIT=y`). External schedulers like `scx_bpfland` or `scx_rusty` can be loaded at runtime via userspace tools — they are **not** part of this kernel build.
+- **Extended Group Scheduling**: `CONFIG_EXT_GROUP_SCHED=y` enables the extended group scheduling infrastructure used by `sched-ext` and cgroup-aware scheduling policies.
 
 ### 🎮 4. GPU & Display Core (Radeon RX 6950 XT / Navi 21)
-- **Display Core (DCN 3.0)**: AMD Display Core enabled (`CONFIG_DRM_AMD_DC=y`, `CONFIG_DRM_AMD_DC_DCN=y`) optimized for Navi 21 architecture.
+- **AMDGPU as Module**: `CONFIG_DRM_AMDGPU=m` — the AMDGPU driver is a loadable kernel module, not built into the kernel image. This is the standard Debian/upstream configuration for GPU drivers.
+- **Display Core (DCN 3.0)**: AMD Display Core enabled (`CONFIG_DRM_AMD_DC=y`) with fast-path support (`CONFIG_DRM_AMD_DC_FP=y`), optimized for Navi 21 / RDNA 2 architecture (DCN 3.0).
+- **Additional AMDGPU features**: Audio CoProcessor (`CONFIG_DRM_AMD_ACP=y`), Secure Display (`CONFIG_DRM_AMD_SECURE_DISPLAY=y`), and ISP support (`CONFIG_DRM_AMD_ISP=y`) enabled.
 - **Heterogeneous Compute (ROCm / KFD)**: AMD HSA kernel driver (`CONFIG_HSA_AMD=y`) enabled for ROCm, Vulkan, and OpenCL compute.
 - **Direct GPU Memory Access**: `CONFIG_DRM_AMDGPU_USERPTR=y` allowing GPU direct access to user space memory pointers.
 - **Resizable BAR & OverDrive**: Full 16 GB VRAM BAR access and OverDrive power limit unlocking (`amdgpu.ppfeaturemask=0xffffffff`).
@@ -123,99 +146,261 @@ This custom kernel build and CI/CD pipeline are specifically tuned for maximum p
 
 ### 🌐 5. Networking & Congestion Control
 - **TCP BBR Default**: Configured with **TCP BBR** as the default congestion control algorithm (`CONFIG_DEFAULT_TCP_CONG="bbr"`, `CONFIG_DEFAULT_BBR=y`). Eliminates bufferbloat and maximizes bandwidth throughput.
-- **eBPF JIT & LSM**: JIT compiler enabled and locked on (`CONFIG_BPF_JIT=y`, `CONFIG_BPF_JIT_ALWAYS_ON=y`) alongside eBPF Security Module (`CONFIG_BPF_LSM=y`) for zero-overhead security hooks.
+- **eBPF JIT & LSM**: JIT compiler enabled and active by default (`CONFIG_BPF_JIT=y`, `CONFIG_BPF_JIT_DEFAULT_ON=y`) alongside eBPF Security Module (`CONFIG_BPF_LSM=y`) for zero-overhead security hooks. `BPF_JIT_ALWAYS_ON` is intentionally not set, preserving runtime control via `net.core.bpf_jit_enable`.
 - **`IO_URING_ZCRX`**: Zero-copy network reception (`CONFIG_IO_URING_ZCRX=y`) enabled for ultra-fast socket I/O.
 
 ### 💾 6. Memory Tuning (Zswap `lzo`)
 - **Zswap Storage**: Native `zswap` with `lzo` compressor (`CONFIG_ZSWAP=y`, `CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO=y`) matching kernel boot parameters.
 - **Transparent Hugepages (`madvise`)**: Set THP default to `madvise` (`CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y`) alongside memory compaction (`CONFIG_COMPACTION=y`) to prevent system-wide memory bloat while enabling 2MB hugepages for opt-in applications (games, emulators, KVM).
 
-### 🛠️ 7. Diagnostics & CI/CD Pipeline
+### 🛠️ 7. Diagnostics & Tracing Infrastructure
+
+> `CONFIG_DEBUG_KERNEL=y` is set intentionally. This enables the diagnostic/tracing infrastructure **without** heavyweight runtime overhead — KASAN, KFENCE, SLUB_DEBUG, DEBUG_VM, and lock validators are **not** set.
+
 - **ORC Unwinder & Hung Task Detection**: ORC stack unwinder (`CONFIG_UNWINDER_ORC=y`) and automatic 120s hung task detection (`CONFIG_DETECT_HUNG_TASK=y`).
-- **Scheduler & Lock Debugging**: Real-time scheduler statistics (`CONFIG_SCHEDSTATS=y`, `CONFIG_SCHED_INFO=y`) and lock debugging support (`CONFIG_LOCK_DEBUGGING_SUPPORT=y`).
-- **Full Tracing Suite**: `FTRACE` infrastructure (`CONFIG_FTRACE=y`, `CONFIG_FUNCTION_TRACER=y`, `CONFIG_STACK_TRACER=y`).
+- **Scheduler Statistics**: Real-time scheduler statistics (`CONFIG_SCHEDSTATS=y`, `CONFIG_SCHED_INFO=y`) for performance profiling and `perf sched` analysis.
+- **Full Ftrace Suite**: Complete function tracing infrastructure (`CONFIG_FTRACE=y`, `CONFIG_FUNCTION_TRACER=y`, `CONFIG_FUNCTION_GRAPH_TRACER=y`, `CONFIG_DYNAMIC_FTRACE=y`, `CONFIG_STACK_TRACER=y`).
+- **Kernel Probes**: `CONFIG_KPROBE_EVENTS=y`, `CONFIG_UPROBE_EVENTS=y`, `CONFIG_BPF_EVENTS=y` — enabling `perf`, `bpftrace`, and eBPF-based tracing tools.
+- **BTF Type Information**: `CONFIG_DEBUG_INFO_BTF=y` and `CONFIG_DEBUG_INFO_BTF_MODULES=y` — required for CO-RE eBPF programs and tools like `bpftool` and `bpftrace`.
+- **Block I/O Tracing**: `CONFIG_BLK_DEV_IO_TRACE=y` for `blktrace`/`blkparse` disk I/O analysis.
 - **Automated Workflow**: GitHub Actions workflow generating `.deb` packages with explicit `-march=znver3` flags and dynamic Git commit changelogs on GitHub Releases.
 
----
+### 🔐 8. CPU Security & Mitigations (Zen 3 / x86_64)
 
-## 🔍 Post-Boot Verification & Diagnostic Commands
+This kernel is **not** a "performance at all costs" build — all CPU security mitigations are retained:
 
-After booting into the custom kernel, verify active optimizations using the following commands:
+- **CPU Mitigations Enabled**: Full mitigation suite active (`CONFIG_CPU_MITIGATIONS=y`), including Spectre v1/v2, Retpoline, SRSO (AMD-specific Zen), SSB, RetBleed, IBPB entry, SLS, and TSA.
+- **Page Table Isolation**: KPTI enabled (`CONFIG_MITIGATION_PAGE_TABLE_ISOLATION=y`) for Meltdown protection.
+- **AMD SRSO Mitigation**: Speculative Return Stack Overflow mitigation (`CONFIG_MITIGATION_SRSO=y`) — directly relevant for Zen 3 microarchitecture.
+- **Control Flow Integrity (CET/IBT)**: Hardware-enforced Indirect Branch Tracking enabled (`CONFIG_X86_CET=y`, `CONFIG_X86_KERNEL_IBT=y`) for kernel control-flow integrity.
+- **User Shadow Stack**: CET Shadow Stack for user-space enabled (`CONFIG_X86_USER_SHADOW_STACK=y`) for return address protection.
 
-- **Check Active TCP Congestion Control (BBR)**:
-  ```bash
-  $ sysctl net.ipv4.tcp_congestion_control
-  net.ipv4.tcp_congestion_control = bbr
-  ```
-
-- **Check AMDGPU Driver & OverDrive Status**:
-  ```bash
-  $ sudo dmesg | grep -i amdgpu
-  [    5.839374] amdgpu: Overdrive is enabled...
-  [    8.098516] amdgpu 0000:0d:00.0: amdgpu: [drm] Display Core v3.2.359 initialized on DCN 3.0
-  ```
-
-- **Check AMD P-State Scaling Driver**:
-  ```bash
-  $ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver
-  amd-pstate-epp
-  ```
-
-- **Check Kernel Preemption Model (Full Preempt)**:
-  ```bash
-  $ dmesg | grep -i "preempt"
-  [    0.000000] Dynamic Preempt: full
-  ```
-
-- **Check Active Zswap Compressor**:
-  ```bash
-  $ cat /sys/module/zswap/parameters/enabled
-  Y
-  $ cat /sys/module/zswap/parameters/compressor
-  lzo
-  ```
-
-- **Check eBPF Extensible Scheduler Status (`sched-ext`)**:
-  ```bash
-  $ cat /sys/kernel/sched_ext/state 2>/dev/null || echo "sched-ext enabled"
-  ```
-
-- **Check Device Memory Cgroup Status (`CGROUP_DMEM`)**:
-  ```bash
-  $ grep CONFIG_CGROUP_DMEM /boot/config-$(uname -r)
-  CONFIG_CGROUP_DMEM=y
-  ```
-
-- **Check eBPF JIT Compiler Status**:
-  ```bash
-  $ sysctl net.core.bpf_jit_enable
-  net.core.bpf_jit_enable = 1
-  ```
-
-- **Check ORC Stack Unwinder Status**:
-  ```bash
-  $ dmesg | grep -i "ORC"
-  [    0.000000] ORC unwinder alive
-  ```
-
-- **Check CPU Topology & 32-Thread Sizing**:
-  ```bash
-  $ lscpu | grep -E "Model name|Thread\(s\) per core|CPU\(s\):"
-  CPU(s):                32
-  Thread(s) per core:    2
-  Model name:            AMD Ryzen 9 5950X 16-Core Processor
-  ```
-
-- **Extract Embedded Kernel Configuration from `.deb`**:
-  ```bash
-  $ dpkg-deb --fsys-tarfile linux-image-6.19.14-ryzen9_*.deb | tar -x ./boot/config-6.19.14-ryzen9 -O | grep -E "CONFIG_DEFAULT_TCP_CONG|CONFIG_X86_NATIVE_CPU"
-  CONFIG_DEFAULT_TCP_CONG="bbr"
-  CONFIG_X86_NATIVE_CPU=y
-  ```
+The security philosophy is **hardware/driver bloat removal** — not security regression.
 
 ---
 
-Hardware
+### 🔬 9. Diagnostics, Tracing & Observability
+
+The kernel deliberately retains a comprehensive diagnostic and tracing stack.
+
+This is **intentional**: the project removes unnecessary runtime hardware support, while keeping the infrastructure needed to diagnose and profile the system.
+
+#### 🔍 Kernel Debug Infrastructure
+
+```
+CONFIG_DEBUG_KERNEL=y
+CONFIG_DEBUG_MISC=y
+CONFIG_DEBUG_INFO=y
+CONFIG_DEBUG_INFO_BTF=y
+CONFIG_DEBUG_INFO_BTF_MODULES=y
+CONFIG_DYNAMIC_DEBUG=y
+CONFIG_DYNAMIC_DEBUG_CORE=y
+```
+
+#### 📊 Scheduler Diagnostics
+
+```
+CONFIG_SCHED_INFO=y
+CONFIG_SCHEDSTATS=y
+CONFIG_LOCK_DEBUGGING_SUPPORT=y
+```
+
+Heavy lock validation facilities are disabled:
+
+```
+# CONFIG_PROVE_LOCKING is not set
+# CONFIG_LOCK_STAT is not set
+# CONFIG_DEBUG_SPINLOCK is not set
+# CONFIG_DEBUG_MUTEXES is not set
+# CONFIG_DEBUG_ATOMIC_SLEEP is not set
+```
+
+This provides scheduler/diagnostic visibility without enabling the heavier debugging stack.
+
+#### 🔎 Ftrace
+
+The kernel retains a full Ftrace suite:
+
+```
+CONFIG_FTRACE=y
+CONFIG_FUNCTION_TRACER=y
+CONFIG_FUNCTION_GRAPH_TRACER=y
+CONFIG_DYNAMIC_FTRACE=y
+CONFIG_DYNAMIC_FTRACE_WITH_REGS=y
+CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS=y
+CONFIG_DYNAMIC_FTRACE_WITH_ARGS=y
+CONFIG_STACK_TRACER=y
+CONFIG_FTRACE_SYSCALLS=y
+CONFIG_KPROBE_EVENTS=y
+CONFIG_UPROBE_EVENTS=y
+CONFIG_BPF_EVENTS=y
+CONFIG_DYNAMIC_EVENTS=y
+```
+
+This enables advanced runtime tracing and profiling with tools like `ftrace`, `perf`, `bpftrace`, and `trace-cmd`.
+
+#### 🧭 ORC Unwinder
+
+```
+CONFIG_UNWINDER_ORC=y
+# CONFIG_UNWINDER_FRAME_POINTER is not set
+```
+
+The ORC unwinder provides efficient and accurate kernel stack unwinding for `perf` and `ftrace` call stacks.
+
+#### 🚨 Hung Task / Lockup Detection
+
+```
+CONFIG_LOCKUP_DETECTOR=y
+CONFIG_SOFTLOCKUP_DETECTOR=y
+CONFIG_HARDLOCKUP_DETECTOR=y
+CONFIG_DETECT_HUNG_TASK=y
+CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=120
+```
+
+The kernel detects:
+- soft lockups (NMI watchdog)
+- hard lockups (perf-based `HARDLOCKUP_DETECTOR_PERF`)
+- hung tasks (120 second default timeout)
+
+---
+
+## 🔍 14. Post-Boot Verification
+
+After booting into the custom kernel, verify active optimizations using the following commands.
+
+#### Kernel version
+```bash
+$ uname -a
+Linux debian 6.19.14-ryzen9 #ryzen9 SMP PREEMPT_DYNAMIC Mon Sep 28 13:28:57 CEST 2026 x86_64 GNU/Linux
+```
+
+#### CPU topology
+```bash
+$ lscpu | grep -E "Model name|Thread\(s\) per core|CPU\(s\):"
+CPU(s):                32
+Thread(s) per core:    2
+Model name:            AMD Ryzen 9 5950X 16-Core Processor
+```
+
+#### AMD P-State
+```bash
+$ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver
+amd-pstate-epp
+```
+
+#### Preemption
+```bash
+$ sudo dmesg | grep -i "preempt"
+[    0.032333] Dynamic Preempt: full
+[    0.032388] rcu: Preemptible hierarchical RCU implementation.
+```
+> `CONFIG_PREEMPT_BUILD=y`, `CONFIG_PREEMPT=y`, `CONFIG_PREEMPT_DYNAMIC=y`
+
+#### NO_HZ
+```bash
+$ grep -E "CONFIG_NO_HZ_(IDLE|FULL)" /boot/config-$(uname -r)
+CONFIG_NO_HZ_IDLE=y
+# CONFIG_NO_HZ_FULL is not set
+```
+
+#### RCU
+```bash
+$ grep -E "CONFIG_RCU_(BOOST|NOCB_CPU)" /boot/config-$(uname -r)
+```
+No output expected — `RCU_BOOST` and `RCU_NOCB_CPU` are not set in this configuration.
+
+#### TCP BBR
+```bash
+$ sysctl net.ipv4.tcp_congestion_control
+net.ipv4.tcp_congestion_control = bbr
+```
+
+#### Zswap
+```bash
+$ cat /sys/module/zswap/parameters/enabled
+Y
+$ cat /sys/module/zswap/parameters/compressor
+lzo
+```
+
+#### AMDGPU
+```bash
+$ sudo dmesg | grep -i amdgpu | head -30
+[    4.611866] amdgpu: unknown parameter 'si_support' ignored
+[    4.611869] amdgpu: unknown parameter 'cik_support' ignored
+[    4.617691] amdgpu: Virtual CRAT table created for CPU
+[    4.617703] amdgpu: Topology: Add CPU node
+[    4.617726] amdgpu: Overdrive is enabled, please disable it before reporting any bugs unrelated to overdrive.
+[    4.617819] amdgpu 0000:0d:00.0: enabling device (0006 -> 0007)
+[    4.617849] amdgpu 0000:0d:00.0: amdgpu: initializing kernel modesetting (SIENNA_CICHLID 0x1002:0x73A5 0x1002:0x0E3A 0xC0).
+[    4.621608] amdgpu 0000:0d:00.0: amdgpu: detected ip block number 0 <common_v1_0_0> (nv_common)
+[    4.623415] amdgpu 0000:0d:00.0: amdgpu: VRAM: 16368M 0x0000008000000000 - 0x00000083FEFFFFFF (16368M used)
+[    4.623417] amdgpu 0000:0d:00.0: amdgpu: GART: 512M 0x0000000000000000 - 0x000000001FFFFFFF
+[    6.883784] amdgpu 0000:0d:00.0: amdgpu: [drm] Display Core v3.2.359 initialized on DCN 3.0
+```
+> The `si_support`/`cik_support` "ignored" warnings confirm that legacy SI/CIK support is correctly disabled in the config (`# CONFIG_DRM_AMDGPU_SI is not set`). VRAM: **16368M** with full ReBAR mapping.
+
+#### Device Memory Cgroup
+```bash
+$ grep CONFIG_CGROUP_DMEM /boot/config-$(uname -r)
+CONFIG_CGROUP_DMEM=y
+```
+
+#### BPF JIT
+```bash
+$ grep -E "CONFIG_BPF_JIT" /boot/config-$(uname -r)
+CONFIG_BPF_JIT=y
+CONFIG_BPF_JIT_DEFAULT_ON=y
+# CONFIG_BPF_JIT_ALWAYS_ON is not set
+```
+
+#### sched-ext
+```bash
+$ cat /sys/kernel/sched_ext/state 2>/dev/null
+disabled
+```
+> `disabled` means the mechanism is available but no external BPF scheduler is currently loaded. Use `scx_bpfland` or `scx_rusty` to activate.
+
+#### ORC Unwinder
+```bash
+$ grep CONFIG_UNWINDER_ORC /boot/config-$(uname -r)
+CONFIG_UNWINDER_ORC=y
+```
+
+#### GPU / ReBAR
+```bash
+$ sudo dmesg | grep -Ei "amdgpu|BAR|Resizable"
+```
+
+---
+
+## 🧪 15. Kernel Configuration Verification
+
+The configuration embedded in the installed kernel can be extracted directly from the Debian package:
+
+```bash
+$ dpkg-deb --fsys-tarfile linux-image-6.19.14-ryzen9_*.deb \
+  | tar -x ./boot/config-6.19.14-ryzen9 -O \
+  | grep -E "CONFIG_(X86_NATIVE_CPU|NR_CPUS|PREEMPT|NO_HZ|BPF_JIT|CGROUP_DMEM|DRM_AMDGPU|HSA_AMD)"
+CONFIG_NO_HZ_IDLE=y
+CONFIG_PREEMPT_BUILD=y
+CONFIG_PREEMPT=y
+CONFIG_PREEMPT_DYNAMIC=y
+CONFIG_BPF_JIT=y
+CONFIG_BPF_JIT_DEFAULT_ON=y
+CONFIG_NR_CPUS=32
+CONFIG_X86_NATIVE_CPU=y
+CONFIG_DRM_AMDGPU=m
+CONFIG_HSA_AMD=y
+CONFIG_CGROUP_DMEM=y
+```
+
+This allows the packaged kernel to be verified independently of the source-tree configuration.
+
+---
+
+🖥️ Workstation Hardware Specs
 -----------
 
 ### 🐧 Kernel and Toolchain
@@ -233,7 +418,6 @@ Hardware
 ```bash
 sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc bison flex zstd \
   libdw-dev libelf-dev libssl-dev libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch kmod perl mawk tar xz-utils git
-
 ```
 
 | Paquete | Versión |
@@ -264,7 +448,6 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | `xz-utils` | `5.8.1-1+deb13u1` |
 | `git` | `1:2.47.3-0+deb13u1` |
 
-
 ### 🧠 CPU
 | Component         | Details                                          |
 | ----------------- | ------------------------------------------------ |
@@ -282,29 +465,33 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | L2 Cache          | 8 MiB (16×512 KiB)                               |
 | L3 Cache          | 64 MiB (2 CCDs)                                  |
 | Instruction Sets  | AVX2, FMA, AES-NI, SHA-NI, VAES, BMI1/2          |
+| Part              | 100-100000059WOF                                 |
 
 ### 💾 Memory RAM
 | Parameter      | Value                     |
 | -------------- | ------------------------- |
-| Total Capacity | 128 GB                     |
+| Total Capacity | 128 GB                    |
 | Configuration  | 4 × 32 GB                 |
 | Type           | DDR4                      |
 | Speed          | 3600 MT/s                 |
+| CL             | 18-22-22-42               |
+| Voltage        | 1.35v                     |
 | Channels       | Dual Channel              |
 | ECC            | No                        |
-| Model          | [G.Skill F4-3600C18-32GTZN](https://www.gskill.com/product/165/326/1562840525/F4-3600C18D-32GTZN) |
+| Model          | [G.Skill F4-3600C18D-64GTZN](https://www.gskill.com/specification/165/326/1582265908/F4-3600C18D-64GTZN-Specification) |
+| EAN            | 4713294224835             |
 
 ### 🎮 GPU
 | Component     | Details               |
 | ------------- | --------------------- |
 | GPU           | [AMD Radeon RX 6950 XT](https://www.amd.com/en/products/graphics/desktops/radeon/6000-series/amd-radeon-rx-6950-xt.html) |
 | Architecture  | RDNA 2 (Navi 21)      |
-| PCI ID        | `1002:73a5`             |
+| PCI ID        | `1002:73a5`           |
 | Kernel Driver | `amdgpu`              |
 | DRM/KMS       | Enabled               |
 
 ### 🎮 GPU APIs
-| API     | Version   | Device / Driver                              |
+| API     | Version   | Device / Driver                             |
 |--------|-----------|----------------------------------------------|
 | AMDGPU | 3.64.0    | DRM 3.64 kernel driver for NAVI21 (6.19.14-ryzen9) |
 | Vulkan | 1.4.305   | RADV (Mesa 25.0.7) for AMD Radeon RX 6950 XT |
@@ -323,7 +510,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | BIOS Date    | 2025-10-29                           |
 | Boot Mode    | UEFI                                 |
 | SMBIOS       | 3.3.0                                |
-| AMD AGESA       | 1.2.0.F                                |
+| AMD AGESA    | 1.2.0.F                              |
 
 ### 🔐 Trusted Platform Module (TPM)
 | Parameter         | Value                         |
@@ -351,22 +538,22 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | ---------- | ------------------------ |
 | Sound Card | [Creative Sound Blaster Z](https://es.creative.com/p/sound-blaster/sound-blaster-z-se) |
 | Chip       | CA0132 Sound Core3D      |
-| PCI ID     | `1102:0012`                |
+| PCI ID     | `1102:0012`              |
 | Driver     | ALSA (`snd_ca0132`)      |
 | Hi-res Audio | [Enabled](https://blog.azagra.dev/linux/high-res-audio-192-khz-en-debian-13-sound-blaster-z) `32 bits / 192kHz` |
-| Speakers     | [Edifier M60](https://link.amazon/B07gPP5Sg)       |
+| Speakers     | [Edifier M60](https://link.amazon/B07gPP5Sg) |
 
 ### 🌐 Network — Ethernet
 | Component  | Details            |
 | ---------- | ------------------ |
 | Controller | [Intel I211 Gigabit](https://www.intel.la/content/www/xl/es/content-details/333015/intel-ethernet-controller-i211-specification-update.html) |
-| PCI ID     | `8086:1539`          |
+| PCI ID     | `8086:1539`        |
 | Driver     | `igb`              |
 
 ### 📡 Wi-Fi / Bluetooth
 | Component | Details                                     |
 | --------- | ------------------------------------------- |
-| Wi-Fi     | [Intel AX210](https://www.intel.com/content/www/us/en/products/sku/204836/intel-wifi-6e-ax210-gig/specifications.html)                                 |
+| Wi-Fi     | [Intel AX210](https://www.intel.com/content/www/us/en/products/sku/204836/intel-wifi-6e-ax210-gig/specifications.html)  |
 | Standard  | Wi-Fi 6E (802.11ax)                         |
 | PCI ID    | `8086:2725`                                 |
 | Driver    | `iwlwifi`                                   |
@@ -375,52 +562,11 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | Driver    | `btusb` + `btintel` (kernel modules loaded) |
 
 ### 🥶 Cooling
-| Component | Details                                     |
-| --------- | ------------------------------------------- |
-| AIO     | [Fractal Celsius+ Prisma S36](https://assets.fractal-design.com/files/uxzbxy2o/production/b67853629f9f80acdb6dba94a8183760a3b8e25d.pdf?_gl=1*rm7upc*_up*MQ..*_ga*MTUwMjI1NDA5OS4xNzkwMjU1NTk0*_ga_NM50S94VPZ*czE3OTAyNTU1OTQkbzEkZzAkdDE3OTAyNTU1OTQkajYwJGwwJGgyMTIzNjI5MzEy) |
-| Fan front  | [3x Noctua NF-P12 redux-1700](https://www.noctua.at/en/products/nf-p12-redux-1700-pwm/specifications)                             |
-| Fan top    | [2x Noctua NF-A14 PWM](https://www.noctua.at/en/products/nf-a14-pwm/specifications)                              |
-| Fan rear   | [1x Noctua NF-F12 PWM](https://www.noctua.at/en/products/nf-f12-pwm/specifications)                            |
-| Thermal Paste | [Noctua NT-H2](https://www.noctua.at/en/products/nt-h2-3-5g/specifications)                            |
----
-
-<img width="92" alt="tux" src="https://github.com/user-attachments/assets/aa76f3de-67d1-4dba-8804-14817b3727f7" /> Linux kernel
-============
-
-The Linux kernel is the core of any Linux operating system. It manages hardware,
-system resources, and provides the fundamental services for all other software.
-
-Quick Start
------------
-
-* Report a bug: See Documentation/admin-guide/reporting-issues.rst
-* Get the latest kernel: https://kernel.org
-* Build the kernel: See Documentation/admin-guide/quickly-build-trimmed-linux.rst
-* Join the community: https://lore.kernel.org/
-
-Essential Documentation
------------------------
-
-All users should be familiar with:
-
-* Building requirements: Documentation/process/changes.rst
-* Code of Conduct: Documentation/process/code-of-conduct.rst
-* License: See COPYING
-
-Documentation can be built with make htmldocs or viewed online at:
-https://www.kernel.org/doc/html/latest/
-
-
-Who Are You?
-============
-
-Find your role below:
-
-* New Kernel Developer - Getting started with kernel development
-* Academic Researcher - Studying kernel internals and architecture
-* Security Expert - Hardening and vulnerability analysis
-* Backport/Maintenance Engineer - Maintaining stable kernels
-* System Administrator - Configuring and troubleshooting
-* Maintainer - Leading subsystems and reviewing patches
-* Hardware Vendor - Writing drivers for new hardware
-* Distribution Maintainer - Packaging kernels for distros
+| Component | Details                                     | Store  |
+| --------- | ------------------------------------------- |--------|
+| AIO     | [Fractal Celsius+ Prisma S36](https://assets.fractal-design.com/files/uxzbxy2o/production/b67853629f9f80acdb6dba94a8183760a3b8e25d.pdf?_gl=1*rm7upc*_up*MQ..*_ga*MTUwMjI1NDA5OS4xNzkwMjU1NTk0*_ga_NM50S94VPZ*czE3OTAyNTU1OTQkbzEkZzAkdDE3OTAyNTU1OTQkajYwJGwwJGgyMTIzNjI5MzEy) | [Amazon](https://link.amazon/B0dfjqm2g) |
+| Fan front  | [3x Noctua NF-P12 redux-1700](https://www.noctua.at/en/products/nf-p12-redux-1700-pwm/specifications) | [Amazon](https://link.amazon/B0fgJONio) |
+| Fan top    | [2x Noctua NF-A14 PWM](https://www.noctua.at/en/products/nf-a14-pwm/specifications) | [Amazon](https://link.amazon/B008yuueF) |
+| Fan rear   | [1x Noctua NF-F12 PWM](https://www.noctua.at/en/products/nf-f12-pwm/specifications) | [Amazon](https://link.amazon/B0cMLbexh) |
+| Thermal Paste | [Noctua NT-H2](https://www.noctua.at/en/products/nt-h2-3-5g/specifications) | [Amazon](https://link.amazon/B0gr5P2hL) |
+| Fan hub | [Noctua NA-FH1](https://www.noctua.at/en/products/na-fh1/specifications) | [Amazon](https://link.amazon/B05P6ZAgX) |
