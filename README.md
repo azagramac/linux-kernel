@@ -378,9 +378,9 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | Component | Details                                     |
 | --------- | ------------------------------------------- |
 | AIO     | [Fractal Celsius+ Prisma S36](https://assets.fractal-design.com/files/uxzbxy2o/production/b67853629f9f80acdb6dba94a8183760a3b8e25d.pdf?_gl=1*rm7upc*_up*MQ..*_ga*MTUwMjI1NDA5OS4xNzkwMjU1NTk0*_ga_NM50S94VPZ*czE3OTAyNTU1OTQkbzEkZzAkdDE3OTAyNTU1OTQkajYwJGwwJGgyMTIzNjI5MzEy) |
-| Fan front  | [3 x Prisma AL-12](https://assets.fractal-design.com/files/uxzbxy2o/production/226625c4f0ae09ac294eb8d3cd172f7b9a137904.pdf?_gl=1*s6m6ws*_up*MQ..*_ga*MTUwMjI1NDA5OS4xNzkwMjU1NTk0*_ga_NM50S94VPZ*czE3OTAyNTU1OTQkbzEkZzAkdDE3OTAyNTU1OTQkajYwJGwwJGgyMTIzNjI5MzEy)                             |
-| Fan top    | [2x NF-A14 PWM](https://www.noctua.at/en/products/nf-a14-pwm/specifications)                              |
-| Fan rear   | [1x NF-A12x25 G2 PWM](https://www.noctua.at/en/products/nf-a12x25-g2-pwm/specifications)                            |
+| Fan front  | [3x Noctua NF-P12 redux-1700](https://www.noctua.at/en/products/nf-p12-redux-1700-pwm/specifications)                             |
+| Fan top    | [2x Noctua NF-A14 PWM](https://www.noctua.at/en/products/nf-a14-pwm/specifications)                              |
+| Fan rear   | [1x Noctua NF-F12 PWM](https://www.noctua.at/en/products/nf-f12-pwm/specifications)                            |
 | Thermal Paste | [Noctua NT-H2](https://www.noctua.at/en/products/nt-h2-3-5g/specifications)                            |
 ---
 
