@@ -1,4 +1,3 @@
-```yaml
 name: 🐧 Build kernel
 
 on:
@@ -578,5 +577,4 @@ jobs:
             --data-urlencode "parse_mode=HTML" \
             --data-urlencode "text=$MESSAGE" \
             >/dev/null 2>&1
-```
 
