@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       config:
-        description: '📄 Kernel config name (ej: config-6.19.14-debian13 from configs/)'
+        description: '📄 Kernel config path relative to configs/'
         required: true
-        default: 'config-6.19.14-debian13'
+        default: 'stable/config-6.19.14-debian13'
       patch:
         description: '🧩 Optional patch name (from patchs/ in repo)'
         required: false
@@ -36,14 +36,14 @@ permissions:
 
 env:
   NODE_OPTIONS: "--no-deprecation"
-  DEFAULT_CONFIG: 'config-6.19.14-debian13'
+  DEFAULT_CONFIG: 'stable/config-6.19.14-debian13'
   DEFAULT_LOCALVERSION: '-ryzen9'
   DEFAULT_URL: 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz'
   ARCH_FLAGS: '-march=znver3'
-  RAW_BASE_URL: 'https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master'
-  KERNEL_CONFIG: ${{ inputs.config || 'config-6.19.14-debian13' }}
-  KERNEL_LOCALVERSION: ${{ inputs.localversion || '-ryzen9' }}
-  KERNEL_URL: ${{ inputs.url || 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz' }}
+  RAW_BASE_URL: 'https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master/'
+  KERNEL_CONFIG: ${{ inputs.config }}
+  KERNEL_LOCALVERSION: ${{ inputs.localversion }}
+  KERNEL_URL: ${{ inputs.url }}
   KERNEL_PATCH: ${{ inputs.patch }}
   KERNEL_TAG: ${{ inputs.tag }}
 
@@ -53,6 +53,10 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: debian:trixie
+
+    outputs:
+      kernel_tag: ${{ steps.kernel_source.outputs.kernel_tag }}
+
     steps:
       - name: 🛠️ Prepare container base tools
         run: |
@@ -74,47 +78,81 @@ jobs:
       - name: 📥 Download kernel tarball
         if: ${{ inputs.url != '' || (inputs.tag == '' && github.event_name == 'pull_request') }}
         id: download_tarball
+        shell: bash
         run: |
-          URL="$KERNEL_URL"
+          URL="${KERNEL_URL:-$DEFAULT_URL}"
           FILENAME=$(basename "$URL")
-          EXT="${FILENAME##*.}"
-          if [[ "$EXT" != "gz" && "$EXT" != "xz" ]]; then
-            echo "❌ Only .tar.gz or .tar.xz are allowed"
-            exit 1
-          fi
+
+          case "$FILENAME" in
+            *.tar.gz)
+              EXT="gz"
+              ;;
+            *.tar.xz)
+              EXT="xz"
+              ;;
+            *)
+              echo "❌ Only .tar.gz or .tar.xz URLs are allowed"
+              echo "URL: $URL"
+              exit 1
+              ;;
+          esac
+
           echo "⬇️ Downloading kernel package..."
-          curl -L -o kernel_package.tar."$EXT" "$URL"
+          curl -fL --retry 3 --retry-all-errors \
+            -o "kernel_package.tar.${EXT}" \
+            "$URL"
+
           mkdir -p kernel_build
-          tar -xf kernel_package.tar."$EXT" -C kernel_build --strip-components=1
-          TAG=$(echo "$FILENAME" | sed -E 's/linux-([0-9]+\.[0-9]+\.[0-9]+)\.tar\.(gz|xz)/\1/')
-          echo "kernel_tag=$TAG" >> $GITHUB_ENV
+          tar -xf "kernel_package.tar.${EXT}" \
+            -C kernel_build \
+            --strip-components=1
 
       - name: 📥 Clone torvalds/linux repo
         if: ${{ inputs.url == '' && inputs.tag != '' }}
         id: clone_repo
         run: |
-          git clone --depth 1 --branch "$KERNEL_TAG" https://github.com/torvalds/linux kernel_build
-          echo "kernel_tag=$KERNEL_TAG" >> $GITHUB_ENV
+          git clone --depth 1 --branch "$KERNEL_TAG" \
+            https://github.com/torvalds/linux \
+            kernel_build
 
       - name: 🔍 Verify kernel source
         run: |
-          if [ ! -d kernel_build ]; then
-            echo "❌ No kernel source available! Provide either a valid URL or a tag."
+          if [ ! -f kernel_build/Makefile ]; then
+            echo "❌ No valid kernel source available!"
+            echo "Provide either a valid kernel tarball URL or a valid Linux kernel tag."
             exit 1
           fi
 
-      - name: 📄 Download .config and optional patch from GitHub
+          echo "✅ Kernel source verified"
+
+      - name: 🏷️ Determine kernel source version
+        id: kernel_source
+        working-directory: kernel_build
         run: |
-          CONFIG_INPUT="$KERNEL_CONFIG"
+          if [ -n "${KERNEL_TAG}" ]; then
+            TAG="${KERNEL_TAG}"
+          else
+            TAG=$(make kernelversion)
+          fi
+
+          echo "kernel_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "🏷️ Kernel source version: $TAG"
+
+      - name: 📄 Kernel config path relative to configs/
+        run: |
+          CONFIG_INPUT="${KERNEL_CONFIG:-$DEFAULT_CONFIG}"
           PATCH_INPUT="$KERNEL_PATCH"
-          
+
           if [ -f "configs/${CONFIG_INPUT}" ]; then
             echo "📋 Using local config configs/${CONFIG_INPUT}..."
             cp "configs/${CONFIG_INPUT}" kernel_build/.config
           else
-            CONFIG_URL="${RAW_BASE_URL}/configs/${CONFIG_INPUT}"
+            CONFIG_URL="${RAW_BASE_URL}configs/${CONFIG_INPUT}"
             echo "⬇️ Downloading config from $CONFIG_URL..."
-            curl -L -o kernel_build/.config "$CONFIG_URL"
+
+            curl -fL --retry 3 --retry-all-errors \
+              -o kernel_build/.config \
+              "$CONFIG_URL"
           fi
 
           if [ -n "$PATCH_INPUT" ]; then
@@ -122,14 +160,30 @@ jobs:
               echo "📋 Using local patch patchs/${PATCH_INPUT}..."
               cp "patchs/${PATCH_INPUT}" kernel_build/patch_file.patch
             else
-              PATCH_URL="${RAW_BASE_URL}/patchs/${PATCH_INPUT}"
+              PATCH_URL="${RAW_BASE_URL}patchs/${PATCH_INPUT}"
               echo "⬇️ Downloading patch from $PATCH_URL..."
-              if curl -L -f -o kernel_build/patch_file.patch "$PATCH_URL"; then
-                echo "✅ Patch downloaded successfully"
-              else
-                echo "⚠️ Patch $PATCH_INPUT not found, skipping..."
-              fi
+
+              curl -fL --retry 3 --retry-all-errors \
+                -o kernel_build/patch_file.patch \
+                "$PATCH_URL"
+
+              echo "✅ Patch downloaded successfully"
             fi
+          fi
+
+      - name: 🧩 Apply patch
+        if: ${{ inputs.patch != '' }}
+        working-directory: kernel_build
+        run: |
+          PATCH_FILE="patch_file.patch"
+
+          if [ -f "$PATCH_FILE" ]; then
+            echo "🔧 Applying patch $PATCH_FILE"
+            patch -p1 < "$PATCH_FILE"
+            echo "✅ Patch applied successfully"
+          else
+            echo "❌ Patch was requested but no patch file was found"
+            exit 1
           fi
 
       - name: 🔧 Apply kernel config
@@ -137,18 +191,6 @@ jobs:
         run: |
           echo "🔧 Applying configuration and running olddefconfig..."
           make olddefconfig
-
-      - name: 🧩 Apply patch
-        if: ${{ inputs.patch != '' }}
-        working-directory: kernel_build
-        run: |
-          PATCH_FILE="patch_file.patch"
-          if [ -f "$PATCH_FILE" ]; then
-            echo "🔧 Applying patch $PATCH_FILE"
-            patch -p1 < "$PATCH_FILE" || true
-          else
-            echo "⚠️ No patch to apply, continuing build"
-          fi
 
       - name: 🔍 Show kernel version
         working-directory: kernel_build
@@ -171,9 +213,11 @@ jobs:
     container:
       image: debian:trixie
       options: -v /:/host
+
     outputs:
       kernel_version: ${{ steps.get_version.outputs.version }}
       release_description: ${{ steps.release_body.outputs.description }}
+
     steps:
       - name: 🛠️ Prepare container base tools
         run: |
@@ -185,7 +229,10 @@ jobs:
 
       - name: 🧹 Clean up host runner space & drop RAM caches
         run: |
-          rm -rf /host/usr/share/dotnet /host/usr/local/lib/android /host/opt/ghc /host/opt/hostedtoolcache || true
+          rm -rf /host/usr/share/dotnet \
+                 /host/usr/local/lib/android \
+                 /host/opt/ghc \
+                 /host/opt/hostedtoolcache || true
 
       - name: ⚙️ Install build dependencies
         run: |
@@ -213,13 +260,15 @@ jobs:
           find . -type f \( -name "*.sh" -o -name "*.pl" -o -name "*.py" \) -exec chmod +x {} +
 
           KERNEL_VER=$(make kernelversion)
-          LOCAL_VER="$KERNEL_LOCALVERSION"
+          CONFIG_INPUT="${KERNEL_CONFIG:-$DEFAULT_CONFIG}"
+          LOCAL_VER="${KERNEL_LOCALVERSION:-$DEFAULT_LOCALVERSION}"
 
           echo "========================================="
           echo "🐧 Environment Build"
           echo "========================================="
           echo "Kernel version : $KERNEL_VER"
           echo "Local version  : $LOCAL_VER"
+          echo "Config         : $CONFIG_INPUT"
           echo "Architecture   : $ARCH_FLAGS"
           echo "Build jobs     : $(nproc)"
           echo "GCC            : $(gcc --version | head -n1)"
@@ -238,7 +287,9 @@ jobs:
           if make -j$(nproc) bindeb-pkg \
               KCFLAGS="$ARCH_FLAGS" \
               LOCALVERSION="$LOCAL_VER" \
-              KDEB_PKGVERSION="$KERNEL_VER$LOCAL_VER" 2>&1 | tee "$BUILD_LOG"
+              KDEB_PKGVERSION="$KERNEL_VER$LOCAL_VER" \
+              KDEB_CHANGELOG_DIST="trixie" \
+              2>&1 | tee "$BUILD_LOG"
           then
               echo "========================================="
               echo "✅ Kernel compilation completed successfully"
@@ -321,7 +372,7 @@ jobs:
         shell: bash
         run: |
           CHANGES_FILE=$(find . -name "*.changes" | head -n1)
-      
+
           if [ -z "$CHANGES_FILE" ]; then
             echo "❌ No .changes file found in workspace or artifacts directory"
             echo "📁 Content of root directory:"
@@ -330,11 +381,11 @@ jobs:
             ls -la artifacts/ || true
             exit 1
           fi
-      
+
           get_field() {
             awk -F': ' -v key="$1" '$1==key {print $2}' "$CHANGES_FILE"
           }
-      
+
           FORMAT=$(get_field "Format")
           DATE=$(get_field "Date")
           SOURCE=$(get_field "Source")
@@ -344,34 +395,34 @@ jobs:
           URGENCY=$(get_field "Urgency")
           MAINTAINER=$(get_field "Maintainer")
           CHANGED_BY=$(get_field "Changed-By")
-      
+
           BINARIES=$(get_field "Binary" | sed 's/ /\` \`/g; s/^/\`/; s/$/\`/')
-      
+
           DESCRIPTION=$(awk '
             /^Description:/ {flag=1; next}
             /^Changes:/ {flag=0}
             flag && NF {print " - "$0}
           ' "$CHANGES_FILE")
-      
+
           SHA1=$(awk '
             /^Checksums-Sha1:/ {flag=1; next}
             /^Checksums-Sha256:/ {flag=0}
             flag && NF {print}
           ' "$CHANGES_FILE")
-      
+
           SHA256=$(awk '
             /^Checksums-Sha256:/ {flag=1; next}
             /^Files:/ {flag=0}
             flag && NF {print}
           ' "$CHANGES_FILE")
-      
+
           FILES=$(awk '
             /^Files:/ {flag=1; next}
             flag && NF {print}
           ' "$CHANGES_FILE")
-      
+
           GIT_CHANGELOG=$(git log -n 10 --pretty=format:"* %h - %s (%an, %cr)" 2>/dev/null || echo " * Custom built Linux kernel.")
-      
+
           cat <<EOF > release.md
           **Format:** $FORMAT  
           **Date:** $DATE  
@@ -405,14 +456,14 @@ jobs:
           $FILES
           \`\`\`
           EOF
-      
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          cat release.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
 
-          echo "description<<EOF" >> $GITHUB_OUTPUT
-          echo "$DESCRIPTION" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          cat release.md >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          echo "description<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$DESCRIPTION" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: 🚀 Upload Linux Kernel
         if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -434,6 +485,7 @@ jobs:
     needs: [prepare, build-and-release]
     if: ${{ github.event_name != 'pull_request' && always() }}
     runs-on: ubuntu-latest
+
     steps:
       - name: 📥 Download Compiled Artifacts
         uses: actions/download-artifact@v8
@@ -451,7 +503,7 @@ jobs:
           PKG_DESCRIPTION: ${{ needs.build-and-release.outputs.release_description }}
           KERNEL_CONFIG: ${{ env.KERNEL_CONFIG }}
           KERNEL_URL: ${{ env.KERNEL_URL }}
-          KERNEL_TAG: ${{ env.KERNEL_TAG }}
+          KERNEL_TAG: ${{ needs.prepare.outputs.kernel_tag }}
           KERNEL_LOCALVERSION: ${{ env.KERNEL_LOCALVERSION }}
           KERNEL_PATCH: ${{ env.KERNEL_PATCH }}
         run: |
@@ -499,7 +551,7 @@ jobs:
             SRC_INFO="${KERNEL_TAG}"
 
             if [ -z "$SRC_INFO" ]; then
-              SRC_INFO="${KERNEL_URL}"
+              SRC_INFO="${KERNEL_URL:-$DEFAULT_URL}"
             fi
 
             if [ -z "$SRC_INFO" ]; then
@@ -509,9 +561,9 @@ jobs:
             MESSAGE="<b>🐧 Linux Kernel Build ❌ Fallido (${BUILD_STATUS^})</b>
 
             ⚠️ <b>Parámetros de la ejecución:</b>
-            • <b>Config:</b> ${KERNEL_CONFIG:-N/A}
+            • <b>Config:</b> ${KERNEL_CONFIG:-$DEFAULT_CONFIG}
             • <b>Origen:</b> ${SRC_INFO}
-            • <b>Localversion:</b> ${KERNEL_LOCALVERSION:-Ninguna}
+            • <b>Localversion:</b> ${KERNEL_LOCALVERSION:-$DEFAULT_LOCALVERSION}
             • <b>Parche:</b> ${KERNEL_PATCH:-Ninguno}
             ${ERROR_LOG}
 
@@ -525,3 +577,4 @@ jobs:
             --data-urlencode "parse_mode=HTML" \
             --data-urlencode "text=$MESSAGE" \
             >/dev/null 2>&1
+
