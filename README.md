@@ -282,17 +282,21 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | L2 Cache          | 8 MiB (16×512 KiB)                               |
 | L3 Cache          | 64 MiB (2 CCDs)                                  |
 | Instruction Sets  | AVX2, FMA, AES-NI, SHA-NI, VAES, BMI1/2          |
+| Part              | 100-100000059WOF                                 |
 
 ### 💾 Memory RAM
 | Parameter      | Value                     |
 | -------------- | ------------------------- |
-| Total Capacity | 128 GB                     |
+| Total Capacity | 128 GB                    |
 | Configuration  | 4 × 32 GB                 |
 | Type           | DDR4                      |
 | Speed          | 3600 MT/s                 |
+| CL             | 18-22-22-42               |
+| Voltage        | 1.35v                     |
 | Channels       | Dual Channel              |
 | ECC            | No                        |
-| Model          | [G.Skill F4-3600C18-32GTZN](https://www.gskill.com/product/165/326/1562840525/F4-3600C18D-32GTZN) |
+| Model          | [G.Skill F4-3600C18D-64GTZN](https://www.gskill.com/specification/165/326/1582265908/F4-3600C18D-64GTZN-Specification) |
+| EAN            | 4713294224835             |
 
 ### 🎮 GPU
 | Component     | Details               |
@@ -323,7 +327,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | BIOS Date    | 2025-10-29                           |
 | Boot Mode    | UEFI                                 |
 | SMBIOS       | 3.3.0                                |
-| AMD AGESA       | 1.2.0.F                                |
+| AMD AGESA    | 1.2.0.F                              |
 
 ### 🔐 Trusted Platform Module (TPM)
 | Parameter         | Value                         |
