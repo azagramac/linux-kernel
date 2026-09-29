@@ -15,7 +15,7 @@ system resources, and provides the fundamental services for all other software.
 
 ---
 
-## Last build4
+## Last build
 
 <img width="972" height="533" alt="image" src="https://github.com/user-attachments/assets/b3e3ed66-9de7-4370-b31e-2c5c6f1339fc" />
 
