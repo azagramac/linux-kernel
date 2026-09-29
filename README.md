@@ -17,7 +17,7 @@ system resources, and provides the fundamental services for all other software.
 
 ## Last build
 
-<img width="972" height="533" alt="image" src="https://github.com/user-attachments/assets/b3e3ed66-9de7-4370-b31e-2c5c6f1339fc" />
+<img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/245772bf-a053-4ad4-9beb-528bab2683f3" />
 
 
 ---
@@ -94,7 +94,7 @@ graph TD
 
 ---
 
-## 🛠️ Custom Kernel Optimizations & Performance Features ([config-6.19.14-debian13](https://github.com/azagramac/linux-kernel/blob/master/configs/stable/config-6.19.14-debian13))
+## 🛠️ Custom Kernel Optimizations & Performance Features
 
 This custom kernel build and CI/CD pipeline are specifically tuned for **this exact hardware**: AMD Ryzen 9 5950X (Zen 3) and AMD Radeon RX 6950 XT (RDNA 2) running on Debian 13.
 
@@ -272,7 +272,7 @@ After booting into the custom kernel, verify active optimizations using the foll
 #### Kernel version
 ```bash
 $ uname -a
-Linux debian 6.19.14-ryzen9 #ryzen9 SMP PREEMPT_DYNAMIC Mon Sep 28 13:28:57 CEST 2026 x86_64 GNU/Linux
+Linux debian 7.2.8-ryzen9 #ryzen9 SMP PREEMPT_DYNAMIC Tue Sep 29 23:45:16 CEST 2026 x86_64 GNU/Linux
 ```
 
 #### CPU topology
@@ -327,17 +327,36 @@ lzo
 #### AMDGPU
 ```bash
 $ sudo dmesg | grep -i amdgpu | head -30
-[    4.611866] amdgpu: unknown parameter 'si_support' ignored
-[    4.611869] amdgpu: unknown parameter 'cik_support' ignored
-[    4.617691] amdgpu: Virtual CRAT table created for CPU
-[    4.617703] amdgpu: Topology: Add CPU node
-[    4.617726] amdgpu: Overdrive is enabled, please disable it before reporting any bugs unrelated to overdrive.
-[    4.617819] amdgpu 0000:0d:00.0: enabling device (0006 -> 0007)
-[    4.617849] amdgpu 0000:0d:00.0: amdgpu: initializing kernel modesetting (SIENNA_CICHLID 0x1002:0x73A5 0x1002:0x0E3A 0xC0).
-[    4.621608] amdgpu 0000:0d:00.0: amdgpu: detected ip block number 0 <common_v1_0_0> (nv_common)
-[    4.623415] amdgpu 0000:0d:00.0: amdgpu: VRAM: 16368M 0x0000008000000000 - 0x00000083FEFFFFFF (16368M used)
-[    4.623417] amdgpu 0000:0d:00.0: amdgpu: GART: 512M 0x0000000000000000 - 0x000000001FFFFFFF
-[    6.883784] amdgpu 0000:0d:00.0: amdgpu: [drm] Display Core v3.2.359 initialized on DCN 3.0
+[    0.000000] Command line: BOOT_IMAGE=/vmlinuz-7.2.8-ryzen9 root=UUID=b6580fbd-f315-4df0-b934-da60ed1467e3 ro amdgpu.ppfeaturemask=0xffffffff zswap.enabled=1 zswap.compressor=lzo
+[    0.009148] Kernel command line: BOOT_IMAGE=/vmlinuz-7.2.8-ryzen9 root=UUID=b6580fbd-f315-4df0-b934-da60ed1467e3 ro amdgpu.ppfeaturemask=0xffffffff zswap.enabled=1 zswap.compressor=lzo
+[    4.859534] amdgpu: unknown parameter 'si_support' ignored
+[    4.860323] amdgpu: unknown parameter 'cik_support' ignored
+[    4.866799] amdgpu: Virtual CRAT table created for CPU
+[    4.867606] amdgpu: Topology: Add CPU node
+[    4.868422] amdgpu: Overdrive is enabled, please disable it before reporting any bugs unrelated to overdrive.
+[    4.869268] amdgpu 0000:0d:00.0: enabling device (0006 -> 0007)
+[    4.870087] amdgpu 0000:0d:00.0: initializing kernel modesetting (SIENNA_CICHLID 0x1002:0x73A5 0x1002:0x0E3A 0xC0).
+[    4.870907] amdgpu 0000:0d:00.0: register mmio base: 0xFC900000
+[    4.871664] amdgpu 0000:0d:00.0: register mmio size: 1048576
+[    4.876104] amdgpu 0000:0d:00.0: detected ip block number 0 <common_v1_0_0> (nv_common)
+[    4.876820] amdgpu 0000:0d:00.0: detected ip block number 1 <gmc_v10_0_0> (gmc_v10_0)
+[    4.877510] amdgpu 0000:0d:00.0: detected ip block number 2 <ih_v5_0_0> (navi10_ih)
+[    4.878172] amdgpu 0000:0d:00.0: detected ip block number 3 <psp_v11_0_0> (psp)
+[    4.878825] amdgpu 0000:0d:00.0: detected ip block number 4 <smu_v11_0_0> (smu)
+[    4.879470] amdgpu 0000:0d:00.0: detected ip block number 5 <dce_v1_0_0> (dm)
+[    4.880098] amdgpu 0000:0d:00.0: detected ip block number 6 <gfx_v10_0_0> (gfx_v10_0)
+[    4.880712] amdgpu 0000:0d:00.0: detected ip block number 7 <sdma_v5_2_0> (sdma_v5_2)
+[    4.881301] amdgpu 0000:0d:00.0: detected ip block number 8 <vcn_v3_0_0> (vcn_v3_0)
+[    4.881866] amdgpu 0000:0d:00.0: detected ip block number 9 <jpeg_v3_0_0> (jpeg_v3_0)
+[    4.882420] amdgpu 0000:0d:00.0: Fetched VBIOS from VFCT
+[    4.882943] amdgpu 0000:0d:00.0: [drm] ATOM BIOS: 113-D4124100-102, build: 604554  , ver: 020.001.000.071.018202, 2022/03/10
+[    4.885161] amdgpu 0000:0d:00.0: vgaarb: deactivate vga console
+[    4.885165] amdgpu 0000:0d:00.0: Trusted Memory Zone (TMZ) feature disabled as experimental (default)
+[    4.885199] amdgpu 0000:0d:00.0: MEM ECC is not presented.
+[    4.885205] amdgpu 0000:0d:00.0: SRAM ECC is not presented.
+[    4.885215] amdgpu 0000:0d:00.0: vm size is 262144 GB, 4 levels, block size is 9-bit, fragment size is 9-bit
+[    4.885226] amdgpu 0000:0d:00.0: VRAM: 16368M 0x0000008000000000 - 0x00000083FEFFFFFF (16368M used)
+[    4.885232] amdgpu 0000:0d:00.0: GART: 512M 0x0000000000000000 - 0x000000001FFFFFFF
 ```
 > The `si_support`/`cik_support` "ignored" warnings confirm that legacy SI/CIK support is correctly disabled in the config (`# CONFIG_DRM_AMDGPU_SI is not set`). VRAM: **16368M** with full ReBAR mapping.
 
@@ -371,6 +390,7 @@ CONFIG_UNWINDER_ORC=y
 #### GPU / ReBAR
 ```bash
 $ sudo dmesg | grep -Ei "amdgpu|BAR|Resizable"
+[    4.885241] amdgpu 0000:0d:00.0: [drm] Detected VRAM RAM=16368M, BAR=16384M
 ```
 
 ---
@@ -406,7 +426,7 @@ This allows the packaged kernel to be verified independently of the source-tree 
 ### 🐧 Kernel and Toolchain
 | Element             | Value               |
 | ------------------- | ------------------- |
-| Kernel              | Linux 6.19.14-ryzen9 |
+| Kernel              | 7.2.8-ryzen9        |
 | Model               | SMP PREEMPT_DYNAMIC |
 | Base Distribution   | Debian 13           |
 | Compiler            | GCC 14.2.0          |

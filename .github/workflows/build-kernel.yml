@@ -9,7 +9,7 @@ on:
       config:
         description: '📄 Kernel config path relative to configs/'
         required: true
-        default: 'stable/config-6.19.14-debian13'
+        default: 'stable/config-7.2.8-debian13'
       patch:
         description: '🧩 Optional patch name (from patchs/ in repo)'
         required: false
@@ -25,7 +25,7 @@ on:
       url:
         description: '📦 Kernel tarball URL from kernel.org (.tar.gz or .tar.xz)'
         required: false
-        default: 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz'
+        default: 'https://www.kernel.org/pub/linux/kernel/v7.x/linux-7.2.8.tar.gz'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -36,9 +36,9 @@ permissions:
 
 env:
   NODE_OPTIONS: "--no-deprecation"
-  DEFAULT_CONFIG: 'stable/config-6.19.14-debian13'
+  DEFAULT_CONFIG: 'stable/config-7.2.8-debian13'
   DEFAULT_LOCALVERSION: '-ryzen9'
-  DEFAULT_URL: 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz'
+  DEFAULT_URL: 'https://www.kernel.org/pub/linux/kernel/v7.x/linux-7.2.8.tar.gz'
   ARCH_FLAGS: '-march=znver3'
   RAW_BASE_URL: 'https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master/'
   KERNEL_CONFIG: ${{ inputs.config }}
