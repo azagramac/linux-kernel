@@ -19,7 +19,6 @@ system resources, and provides the fundamental services for all other software.
 
 <img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/245772bf-a053-4ad4-9beb-528bab2683f3" />
 
-
 ---
 
 ## 📌 Project Architecture & CI/CD Workflow
@@ -51,7 +50,6 @@ graph TD
     style Job3 fill:#1a202c,stroke:#805ad5,color:#fff
     style D fill:#dd6b20,stroke:#ed8936,color:#fff
 ```
-
 ---
 
 ## ⚡ Kernel Customization & Performance
@@ -431,7 +429,7 @@ This allows the packaged kernel to be verified independently of the source-tree 
 | Base Distribution   | Debian 13           |
 | Compiler            | GCC 14.2.0          |
 | Target Architecture | Zen 3               |
-| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="quiet amdgpu.ppfeaturemask=0xffffffff zswap.enabled=1 zswap.compressor=lzo"` |
+| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="amdgpu.ppfeaturemask=0xffffffff zswap.enabled=1 zswap.compressor=lzo"` |
 
 ### 📦 Build Dependencies
 
@@ -459,7 +457,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | `rsync` | `3.4.1+ds1-5+deb13u4` |
 | `python3` | `3.13.5-1` |
 | `curl` | `8.14.1-2+deb13u5` |
-| `jq` | `1.7.1-6+deb13u3` |
+| `jq` | `1.7.1-6+deb13u4` |
 | `patch` | `2.8-2` |
 | `kmod` | `34.2-2` |
 | `perl` | `5.40.1-6+deb13u1` |
@@ -511,13 +509,18 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | DRM/KMS       | Enabled               |
 
 ### 🎮 GPU APIs
-| API     | Version   | Device / Driver                             |
-|--------|-----------|----------------------------------------------|
-| AMDGPU | 3.64.0    | DRM 3.64 kernel driver for NAVI21 (6.19.14-ryzen9) |
-| Vulkan | 1.4.305   | RADV (Mesa 25.0.7) for AMD Radeon RX 6950 XT |
-| OpenCL | 3.0       | OpenCL C 1.2 via ROCr / RustiCL / Mesa       |
-| OpenGL | 4.6       | Mesa 25.0.7 (Compatibility Profile, LLVM 19.1.7) |
-| BAR    | Enabled   | *Runtime Detection*: `VRAM RAM=16368M, BAR=16384M (Resizable BAR Enabled)`|
+|        API        |     Versión      |               Driver                              |
+| ----------------- | ---------------- | ------------------------------------------------- |
+| **Kernel**        | `7.2.8-ryzen9`   | Custom Linux kernel                               |
+| **AMDGPU / DRM**  | `3.64`           | AMDGPU — AMD Radeon RX 6950 XT / NAVI21           |
+| **Vulkan**        | `1.4.309`        | RADV — Mesa `25.0.7-2+deb13u1`                    |
+| **OpenCL**        | `3.0`            | RustiCL — Mesa `25.0.7-2+deb13u1`                 |
+| **OpenCL C**      | RustiCL          | OpenCL C — confirmar con `clinfo` completo        |
+| **OpenGL**        | `4.6`            | radeonsi — Mesa `25.0.7-2+deb13u1`, LLVM `19.1.7` |
+| **VRAM**          | `16368 MiB`      | GDDR6, 256-bit                                    |
+| **Resizable BAR** | `16 GB`          | BAR 0: 16 GB                                      |
+| **GTT**           | `32109 MiB`      | AMDGPU                                            |
+| **GART**          | `512 MiB`        | AMDGPU                                            |
 
 ### 🧩 Motherboard
 | Component    | Details                              |
