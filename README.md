@@ -7,7 +7,7 @@ system resources, and provides the fundamental services for all other software.
 -----------
 
 ![Linux Kernel](https://img.shields.io/badge/dynamic/json?label=Linux%20Kernel&query=latest_stable.version&url=https%3A%2F%2Fwww.kernel.org%2Freleases.json&color=f5be04)
-[![Kernel Version](https://img.shields.io/badge/Kernel-7.2.8--ryzen9-blue.svg)](https://github.com/azagramac/linux-kernel/releases)
+[![Kernel Version](https://img.shields.io/github/v/release/azagramac/linux-kernel?label=Kernel&color=blue&display_name=release)](https://github.com/azagramac/linux-kernel/releases)
 
 [![Target CPU](https://img.shields.io/badge/Architecture-AMD%20Zen%203-orange.svg)](https://www.amd.com/es/technologies/zen-core.html#generations)
 [![Target OS](https://img.shields.io/badge/OS-Debian%2013%20Trixie-a80030.svg)](https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/)
