@@ -525,7 +525,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 ### 🧩 Motherboard
 | Component    | Details                              |
 | ------------ | ------------------------------------ |
-| Motherboard  | [Gigabyte X570 AORUS ELITE]([https://www.gigabyte.com/Motherboard/X570-AORUS-ELITE-rev-10/sp](https://www.gigabyte.com/latam/Motherboard/X570-AORUS-ELITE-rev-10/sp)) (rev. 1.0) |
+| Motherboard  | [Gigabyte X570 AORUS ELITE](https://www.aorus.com/es-es/motherboards/x570-aorus-elite-rev-10/Specification) (rev. 1.0) |
 | Chipset      | AMD X570                             |
 | Manufacturer | Gigabyte Technology Co., Ltd.        |
 | BIOS         | AMI (American Megatrends)            |
@@ -561,15 +561,19 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | ---------- | ------------------------ |
 | Sound Card | [Creative Sound Blaster Z](https://es.creative.com/p/sound-blaster/sound-blaster-z-se) |
 | Chip       | CA0132 Sound Core3D      |
+| DNR/SNR    | 116 dB                   |
 | PCI ID     | `1102:0012`              |
 | Driver     | ALSA (`snd_ca0132`)      |
-| Hi-res Audio | [Enabled](https://blog.azagra.dev/linux/high-res-audio-192-khz-en-debian-13-sound-blaster-z) `32 bits / 192kHz` |
+| Hi-res Audio | [Enabled](https://github.com/azagramac/soundblaster-z-hires) `32 bits / 192kHz` |
 | Speakers     | [Edifier M60](https://link.amazon/B07gPP5Sg) |
 
 ### 🌐 Network — Ethernet
 | Component  | Details            |
 | ---------- | ------------------ |
 | Controller | [Intel I211 Gigabit](https://www.intel.la/content/www/xl/es/content-details/333015/intel-ethernet-controller-i211-specification-update.html) |
+| Bus Interface | PCI Express v2.1 (2.5 GT/s) |
+| IEEE Standards | 802.3az (EEE), 1588 / 802.1AS, 802.1Qav |
+| Speeds | 10/100/1000 Mbps (Auto-negotiation) |
 | PCI ID     | `8086:1539`        |
 | Driver     | `igb`              |
 
