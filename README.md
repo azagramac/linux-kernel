@@ -515,7 +515,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | **AMDGPU / DRM**  | `3.64`           | AMDGPU — AMD Radeon RX 6950 XT / NAVI21           |
 | **Vulkan**        | `1.4.309`        | RADV — Mesa `25.0.7-2+deb13u1`                    |
 | **OpenCL**        | `3.0`            | RustiCL — Mesa `25.0.7-2+deb13u1`                 |
-| **OpenCL C**      | RustiCL          | OpenCL C — confirmar con `clinfo` completo        |
+| **OpenCL C**      | `1.1`            | Device OpenCL C Version        |
 | **OpenGL**        | `4.6`            | radeonsi — Mesa `25.0.7-2+deb13u1`, LLVM `19.1.7` |
 | **VRAM**          | `16368 MiB`      | GDDR6, 256-bit                                    |
 | **Resizable BAR** | `16 GB`          | BAR 0: 16 GB                                      |
