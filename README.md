@@ -6,10 +6,10 @@ system resources, and provides the fundamental services for all other software.
 
 -----------
 
-![Linux Kernel](https://img.shields.io/badge/dynamic/json?label=Linux%20Kernel&query=latest_stable.version&url=https%3A%2F%2Fwww.kernel.org%2Freleases.json&color=f5be04)
+[![Linux Kernel](https://img.shields.io/badge/dynamic/json?label=Linux%20Kernel&query=latest_stable.version&url=https%3A%2F%2Fwww.kernel.org%2Freleases.json&color=FFD133)](https://kernel.org/)
 [![Kernel Version](https://img.shields.io/github/v/release/azagramac/linux-kernel?label=Kernel&color=blue&display_name=release)](https://github.com/azagramac/linux-kernel/releases)
 
-[![Target CPU](https://img.shields.io/badge/Architecture-AMD%20Zen%203-orange.svg)](https://www.amd.com/es/technologies/zen-core.html#generations)
+[![Target CPU](https://img.shields.io/badge/Architecture-AMD%20Zen%203-FF8500.svg)](https://www.amd.com/es/technologies/zen-core.html#generations)
 [![Target OS](https://img.shields.io/badge/OS-Debian%2013%20Trixie-a80030.svg)](https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/)
 [![Compiler](https://img.shields.io/badge/Compiler-GCC%2014.2.0-green.svg)](https://gcc.gnu.org/gcc-14/)
 
@@ -515,7 +515,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | **AMDGPU / DRM**  | `3.64`           | AMDGPU — AMD Radeon RX 6950 XT / NAVI21           |
 | **Vulkan**        | `1.4.309`        | RADV — Mesa `25.0.7-2+deb13u1`                    |
 | **OpenCL**        | `3.0`            | RustiCL — Mesa `25.0.7-2+deb13u1`                 |
-| **OpenCL C**      | RustiCL          | OpenCL C — confirmar con `clinfo` completo        |
+| **OpenCL C**      | `1.1`            | Device OpenCL C Version        |
 | **OpenGL**        | `4.6`            | radeonsi — Mesa `25.0.7-2+deb13u1`, LLVM `19.1.7` |
 | **VRAM**          | `16368 MiB`      | GDDR6, 256-bit                                    |
 | **Resizable BAR** | `16 GB`          | BAR 0: 16 GB                                      |
