@@ -469,7 +469,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: kernel-${{ github.run_number }}
+          tag_name: kernel-${{ steps.get_version.outputs.version }}
           name: "Kernel ${{ steps.get_version.outputs.version }}"
           body: ${{ steps.release_body.outputs.body }}
           files: |
