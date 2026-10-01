@@ -17,7 +17,7 @@ system resources, and provides the fundamental services for all other software.
 
 ## Last build
 
-<img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/245772bf-a053-4ad4-9beb-528bab2683f3" />
+<img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/1ff46fc9-86ee-4217-9439-769c86bcdb7a" />
 
 ---
 
@@ -54,41 +54,65 @@ graph TD
 
 ## ⚡ Kernel Customization & Performance
 
-| Subsystem | Configuration / Option | Engineering Rationale |
+### 🧠 CPU, Architecture & Topology
+| Subsystem / Option | Kconfig Option | Engineering Rationale |
 | :--- | :--- | :--- |
-| **Native CPU Optimization** | `CONFIG_X86_NATIVE_CPU=y` + `KCFLAGS="-march=znver3"` | Two-layer native optimization: `X86_NATIVE_CPU` enables Kconfig CPU feature selection based on the build host ISA; `-march=znver3` directs GCC to emit Zen 3-specific instructions (AVX2/BMI2/VAES). Both are complementary and required for full native optimization. |
-| **Scheduler & Preemption**| `PREEMPT_BUILD` / `PREEMPT=y` | Full kernel preemption for minimal input and audio processing latency. |
-| **Timer Frequency** | `1000 Hz` (`CONFIG_HZ_1000=y`) | High-resolution tick frequency for desktop responsiveness and frame pacing. |
-| **Tickless Kernel** | `CONFIG_NO_HZ_IDLE=y` | Idle-tickless kernel: timer interrupts suppressed on idle CPUs, reducing power and wakeup overhead. `NO_HZ_FULL` is intentionally not enabled to avoid scheduler complexity. |
-| **CPU Core Sizing** | `CONFIG_NR_CPUS=32` | Hardcapped to 32 threads matching Ryzen 9 5950X, eliminating virtual CPU overhead. |
-| **CPU Frequency Scaling**| `amd-pstate` EPP (`CONFIG_X86_AMD_PSTATE=y`) | Hardware CPPC microsecond-level core frequency and voltage adjustments. |
-| **NUMA** | `CONFIG_NUMA=y` / `# CONFIG_NUMA_BALANCING is not set` | NUMA infrastructure retained (`CONFIG_AMD_NUMA=y`, `CONFIG_X86_64_ACPI_NUMA=y`); automatic NUMA memory balancing disabled to eliminate background scan overhead on this single-node Ryzen system. |
-| **Core Scheduling** | `CONFIG_SCHED_CORE=y` | SMT thread isolation and core scheduling for security and hyperthreading performance. |
-| **TCP Congestion** | **TCP BBR** (`CONFIG_DEFAULT_TCP_CONG="bbr"`) | Bottleneck bandwidth RTT pacing algorithm to prevent bufferbloat and latency spikes. |
-| **Extensible Scheduler** | `CONFIG_SCHED_CLASS_EXT=y` | In-kernel `sched-ext` BPF scheduler class. Enables the mechanism for dynamically loading external BPF schedulers (`scx_bpfland`, `scx_rusty`) at runtime — they are **not** embedded in the kernel. Depends on BPF infrastructure (`CONFIG_BPF=y`, `CONFIG_BPF_SYSCALL=y`). |
-| **Extended Group Sched** | `CONFIG_EXT_GROUP_SCHED=y` | Extended group scheduling infrastructure used by `sched-ext` and cgroup-aware scheduling policies (`CGROUP_BPF`, `CGROUP_SCHED`). |
-| **VRAM Cgroup Management** | `CONFIG_CGROUP_DMEM=y` | Device Memory cgroup controller enabling dynamic VRAM resource allocation and priority control on `amdgpu`. |
-| **eBPF JIT Compiler** | `CONFIG_BPF_JIT=y` / `CONFIG_BPF_JIT_DEFAULT_ON=y` | JIT compiler enabled and active by default; `BPF_JIT_ALWAYS_ON` is intentionally not set, preserving runtime control via `net.core.bpf_jit_enable`. |
-| **eBPF Security (LSM)** | `CONFIG_BPF_LSM=y` | In-kernel eBPF Linux Security Module for granular, high-performance security hooks. |
-| **eBPF BTF Type Format** | `CONFIG_DEBUG_INFO_BTF=y` | Pahole split-BTF typeinfo generation for vmlinux and modules (`BTF_MODULES=y`) for eBPF tracing tools. |
-| **Async Socket I/O** | `IO_URING_ZCRX=y` | Zero-copy packet reception for ultra-fast network socket I/O. |
-| **GPU Driver** | `CONFIG_DRM_AMDGPU=m` | AMDGPU as loadable kernel module (not built-in). SI/CIK legacy support disabled. Native RDNA 2 support, Resizable BAR (ReBAR), and OverDrive power limit unlocking. |
+| **Native CPU Optimization** | `CONFIG_X86_NATIVE_CPU=y` + `KCFLAGS="-march=znver3"` | Two-layer native optimization: `X86_NATIVE_CPU` enables Kconfig host ISA feature detection; `-march=znver3` directs GCC to emit Zen 3-specific instructions (AVX2/BMI2/VAES). |
+| **CPU Core Sizing** | `CONFIG_NR_CPUS=32` | Hardcapped to 32 exact threads matching Ryzen 9 5950X, eliminating virtual CPU overhead. |
+| **CPU Frequency Scaling** | `amd-pstate` EPP (`CONFIG_X86_AMD_PSTATE=y`) | Hardware CPPC microsecond-level core frequency and voltage scaling (`X86_AMD_PSTATE_UT` disabled in production). |
+| **NUMA Topology** | `CONFIG_NUMA=y` / `# CONFIG_NUMA_BALANCING is not set` | NUMA topology retained (`AMD_NUMA=y`, `X86_64_ACPI_NUMA=y`); automatic scan balancing disabled to eliminate overhead on single-node Ryzen systems. |
+| **Core Scheduling** | `CONFIG_SCHED_CORE=y` | SMT thread isolation and core scheduling for security and hyperthreading gaming performance. |
+
+### ⏱️ Scheduler, Latency & Ticks
+| Subsystem / Option | Kconfig Option | Engineering Rationale |
+| :--- | :--- | :--- |
+| **Scheduler & Preemption** | `CONFIG_PREEMPT_BUILD=y` / `CONFIG_PREEMPT=y` | Fully preemptible kernel for minimal input processing and audio latency. |
+| **Timer Frequency** | `1000 Hz` (`CONFIG_HZ_1000=y`, `CONFIG_HZ=1000`) | High-resolution tick frequency for desktop responsiveness and precise frame pacing. |
+| **Tickless Kernel** | `CONFIG_NO_HZ_IDLE=y` | Idle-tickless mode: suppresses timer interrupts on idle CPUs, reducing wakeup overhead. |
+| **Extensible Scheduler** | `CONFIG_SCHED_CLASS_EXT=y` & `CONFIG_EXT_GROUP_SCHED=y` | Support for dynamic userspace eBPF schedulers (`scx_bpfland`, `scx_rusty`). |
+
+### 🎮 GPU RDNA 2, Display & Compute (ROCm)
+| Subsystem / Option | Kconfig Option | Engineering Rationale |
+| :--- | :--- | :--- |
+| **GPU Driver Stack** | `CONFIG_DRM_AMDGPU=m` | AMDGPU driver as loadable kernel module. Native RDNA 2 support, 16 GB Resizable BAR (ReBAR), and unlocked OverDrive power limits. |
 | **AMD Display Core** | `CONFIG_DRM_AMD_DC=y` / `CONFIG_DRM_AMD_DC_FP=y` | AMD Display Core with fast-path support for DCN 3.0 (Navi 21 / RX 6950 XT). |
-| **AMD Secure Display** | `CONFIG_DRM_AMD_SECURE_DISPLAY=y` | Secure display path support for AMD GPU. |
-| **AMD Audio Coprocessor** | `CONFIG_DRM_AMD_ACP=y` | AMD Audio CoProcessor driver enabled alongside AMDGPU. |
-| **GPU ROCm Compute** | `CONFIG_HSA_AMD=y` / `CONFIG_DRM_AMDGPU_USERPTR=y` | Native AMD KFD driver for ROCm, OpenCL 3.0, and direct GPU user-pointer memory access. |
-| **PlayStation Gamepads** | `CONFIG_HID_PLAYSTATION=m` / `FF=y` | Sony DualSense (PS5) & DualShock 4 (PS4) controller support with haptic Force Feedback. |
-| **Legacy Radeon Removal**| `# CONFIG_DRM_RADEON is not set` | Legacy Radeon DRM driver disabled to ensure exclusive `amdgpu` driver stack execution. |
-| **AMD IOMMU Isolation** | `CONFIG_AMD_IOMMU=y` (`# INTEL_IOMMU`) | Native AMD Vi IOMMU enabled while stripping unused Intel DMAR overhead. |
-| **Memory / Zswap** | `zswap` + `lzo` (`CONFIG_ZSWAP=y`) | In-RAM compressed swap cache matching kernel boot parameters (`zswap.compressor=lzo`). |
-| **Hugepages & Compaction**| `THP MADVISE` + `COMPACTION=y` | Transparent Hugepages THP default set to `madvise` to avoid memory bloat with opt-in THP for games/VMs. |
-| **Hung Task Diagnostics** | `CONFIG_DETECT_HUNG_TASK=y` (120s) | Automatic detection and logging of blocked or hanging kernel threads. |
-| **Stack Unwinder** | `UNWINDER_ORC=y` | Low-overhead ORC call stack unwinding for precise ftrace kernel profiling. |
-| **Hi-Res Audio Driver** | `CONFIG_SND_HDA_CODEC_CA0132=m` | CA0132 Sound Core3D HDA codec as loadable module, with DSP firmware support (`CA0132_DSP=y`) for Sound Blaster Z 32-bit / 192 kHz audio. |
-| **CPU Mitigations** | `CONFIG_CPU_MITIGATIONS=y` | Full Spectre/Meltdown/RetBleed/SRSO/SSB/TSA mitigation suite retained — this is not a "performance at all costs" kernel. |
-| **CET / IBT** | `CONFIG_X86_CET=y` / `CONFIG_X86_KERNEL_IBT=y` | Hardware Indirect Branch Tracking for kernel control-flow integrity (supported on Zen 3). |
+| **VRAM Cgroup Management**| `CONFIG_CGROUP_DMEM=y` | cgroups v2 Device Memory controller for dynamic VRAM resource allocation and priority control on `amdgpu`. |
+| **Heterogeneous Compute** | `CONFIG_HSA_AMD=y` / `CONFIG_DRM_AMDGPU_USERPTR=y` | Native AMD KFD driver for ROCm, Vulkan, OpenCL 3.0, and direct GPU user-pointer memory access. |
+| **Legacy Radeon Removal** | `# CONFIG_DRM_RADEON is not set` | Legacy Radeon DRM driver disabled to ensure exclusive execution of the `amdgpu` driver stack. |
+
+### 🌐 Networking, Sockets & Congestion Control
+| Subsystem / Option | Kconfig Option | Engineering Rationale |
+| :--- | :--- | :--- |
+| **TCP Congestion** | **TCP BBR** (`CONFIG_DEFAULT_TCP_CONG="bbr"`) | Bottleneck bandwidth RTT pacing algorithm to prevent bufferbloat and latency spikes. |
+| **Targeted Network Stack** | `CONFIG_IGB=m` / `CONFIG_IXGBE=m` / `CONFIG_IWLWIFI=m` | Targeted Intel network stack: I211 Gigabit (`igb`), 10GbE (`ixgbe` + `libie`), and AX210 Wi-Fi 6E (`iwlwifi` / `btusb`). |
+| **Async Socket I/O** | `CONFIG_IO_URING_ZCRX=y` | Zero-copy packet reception for ultra-fast network socket I/O via `io_uring`. |
+
+### 💾 Memory Management, ZRAM & Storage
+| Subsystem / Option | Kconfig Option | Engineering Rationale |
+| :--- | :--- | :--- |
+| **Memory / Zswap** | `CONFIG_ZSWAP=y` (`zswap.compressor=lzo`) | In-RAM compressed swap cache matching kernel boot parameters. |
+| **ZRAM Devices** | `CONFIG_ZRAM=y` (`zram.comp=lzo-rle`) | Compressed RAM block devices for high-performance dynamic swap. |
+| **Loop & RAM Disk** | `CONFIG_BLK_DEV_LOOP=m` / `CONFIG_BLK_DEV_RAM=m` | Support for mounting ISO/disk images (`loop`) and RAM disk block devices. |
+| **Hugepages & Compaction** | `THP MADVISE` (`CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y`) | Transparent Hugepages default set to `madvise` with memory compaction to avoid bloat while enabling opt-in 2MB hugepages. |
+
+### 🔊 Audio, Multimedia & Gaming Input
+| Subsystem / Option | Kconfig Option | Engineering Rationale |
+| :--- | :--- | :--- |
+| **Hi-Res Audio Driver** | `CONFIG_SND_HDA_CODEC_CA0132=m` | Dedicated CA0132 Sound Core3D ALSA codec module with DSP support for Sound Blaster Z 32-bit / 192 kHz audio. |
+| **PlayStation Controllers**| `CONFIG_HID_PLAYSTATION=m` / `CONFIG_PLAYSTATION_FF=y` | Sony DualSense (PS5) & DualShock 4 (PS4) controller support with haptic Force Feedback over USB and Bluetooth. |
+| **Virtual User Input** | `CONFIG_INPUT_UINPUT=m` | User-space `/dev/uinput` interface for input emulation, virtual gamepads, and software remapping (Steam Input). |
+| **USB Webcams & Video** | `CONFIG_USB_VIDEO_CLASS=m` / `CONFIG_VIDEOBUF2_V4L2=m` | Video4Linux2 pipeline and UVC driver for USB webcams with physical evdev button support. |
+| **Legacy USB Controllers** | `CONFIG_USB_EHCI_HCD=m` / `OHCI` / `UHCI` | USB 2.0 and 1.1 host controller drivers for maximum legacy USB peripheral compatibility. |
+
+### 🔐 Security, Integrity & Diagnostics
+| Subsystem / Option | Kconfig Option | Engineering Rationale |
+| :--- | :--- | :--- |
+| **CPU Security Mitigations**| `CONFIG_CPU_MITIGATIONS=y` | Full Spectre, Meltdown, Retpoline, SRSO (Zen 3), RetBleed, and SSB CPU security mitigation suite active. |
+| **Control Flow Integrity**| `CONFIG_X86_CET=y` / `CONFIG_X86_KERNEL_IBT=y` | Hardware-enforced Indirect Branch Tracking for kernel control-flow integrity on Zen 3. |
 | **User Shadow Stack** | `CONFIG_X86_USER_SHADOW_STACK=y` | CET Shadow Stack for user-space return address protection. |
-| **Bloat Trimming** | Disabled unused CPU/GPU/Drivers | Removed Intel/Nvidia drivers, legacy AMD SI/CIK, and unused network vendors. |
+| **eBPF Security (LSM)** | `CONFIG_BPF_LSM=y` / `CONFIG_BPF_JIT=y` | In-kernel eBPF Linux Security Module with eBPF JIT compiler enabled and active by default. |
+| **Stack Unwinder & Tracing**| `UNWINDER_ORC=y` / `DEBUG_INFO_BTF=y` | Low-overhead ORC call stack unwinding and Pahole split-BTF typeinfo for eBPF/ftrace kernel profiling. |
+| **Module Cleanup (91%)** | 233 Essential Modules (`=m`) | Massive 91% reduction in loadable modules (from 2,631 to 233). Removed unused Intel/NVIDIA GPUs, unused network vendors, and TV/DVB cards. |
 
 ---
 
@@ -96,23 +120,23 @@ graph TD
 
 This custom kernel build and CI/CD pipeline are specifically tuned for **this exact hardware**: AMD Ryzen 9 5950X (Zen 3) and AMD Radeon RX 6950 XT (RDNA 2) running on Debian 13.
 
-The guiding philosophy is **hardware/driver bloat removal while retaining security and diagnostic capabilities**:
+The guiding philosophy is **aggressive module & bloat removal (91% module reduction, from 2,631 down to 233 essential modules) while retaining security, performance, and diagnostic capabilities**:
 - 🔧 CPU-specific optimization (Zen 3, 32 threads, AMD pstate, PREEMPT, 1000 Hz)
 - 🎮 GPU-specific support (RDNA 2 / amdgpu module, ROCm, VRAM cgroups)
-- 🌐 Targeted network drivers only (I211 + AX210)
+- 🌐 Targeted network drivers only (Intel I211 `igb` + Intel 10GbE `ixgbe` + Intel AX210 `iwlwifi` / `btusb`)
 - 🔐 Security retained (all CPU mitigations, CET/IBT, BPF LSM)
 - 🔍 Diagnostics retained (BTF, Ftrace, Kprobes, ORC)
-- 🗑️ Hardware bloat removed (Intel GPU, NVIDIA, legacy Radeon, unused network, legacy buses)
+- 🗑️ Hardware bloat removed (Intel GPU, NVIDIA, legacy Radeon, unused network vendors, legacy buses, TV/DVB)
 
 ### 🧹 1. Hardware Trimming & Bloat Elimination
 - **Non-AMD CPU Support Removed**: Disabled Intel, Hygon, Centaur, and Zhaoxin CPU support (`# CONFIG_CPU_SUP_INTEL is not set`, etc.) to streamline kernel execution paths.
 - **Unused GPU Drivers Removed**: Disabled Intel i915 (`# CONFIG_DRM_I915 is not set`) and Nvidia Nouveau (`# CONFIG_DRM_NOUVEAU is not set`).
 - **Legacy AMDGPU Generations Removed**: Disabled legacy Southern Islands (`SI`) and Sea Islands (`CIK`) support (`# CONFIG_DRM_AMDGPU_SI is not set`, `# CONFIG_DRM_AMDGPU_CIK is not set`), eliminating `si_support` / `cik_support` parameter warnings in `dmesg`.
-- **Targeted Wireless & Network Drivers**: Kept strictly **`iwlwifi`** (Intel AX210) and **`igb`** (Intel I211), stripping unnecessary Realtek, Broadcom, Atheros, and Ralink wireless/ethernet drivers.
+- **Targeted Wireless & Network Drivers**: Kept strictly **`iwlwifi`** (Intel AX210), **`igb`** (Intel I211 Gigabit), and **`ixgbe`** (Intel 10GbE), stripping unnecessary Realtek, Broadcom, Atheros, and Ralink wireless/ethernet drivers.
 - **AMD IOMMU Isolation**: Native AMD Vi IOMMU driver enabled (`CONFIG_AMD_IOMMU=y`), while disabling unused Intel DMAR overhead (`# CONFIG_INTEL_IOMMU is not set`).
 - **Legacy Radeon Driver Disabled**: Legacy Radeon DRM driver disabled (`# CONFIG_DRM_RADEON is not set`), ensuring exclusive `amdgpu` driver stack execution.
-- **Legacy Controllers Disabled**: Removed floppy, parallel ports (`PARPORT`), PCMCIA/CardBus, FireWire (IEEE1394), ISDN, and analog modems.
-- **DVB & TV Capture Removal**: Disabled DVB digital/analog TV, SDR radio, and PCI capture cards (`# CONFIG_DVB_CORE is not set`, `# CONFIG_MEDIA_PCI_SUPPORT is not set`), while preserving USB webcam support (`CONFIG_USB_VIDEO_CLASS=m`).
+- **Legacy Controllers & Buses**: Removed floppy, parallel ports (`PARPORT`), PCMCIA/CardBus, FireWire (IEEE1394), ISDN, and analog modems, while retaining legacy USB host controllers (`CONFIG_USB_EHCI_HCD=m`, `CONFIG_USB_OHCI_HCD=m`, `CONFIG_USB_UHCI_HCD=m`) for full legacy USB 1.1/2.0 device compatibility.
+- **DVB & TV Capture Removal**: Disabled DVB digital/analog TV, SDR radio, and PCI capture cards (`# CONFIG_DVB_CORE is not set`, `# CONFIG_MEDIA_PCI_SUPPORT is not set`), while preserving USB webcam support (`CONFIG_USB_VIDEO_CLASS=m`, `CONFIG_UVC_COMMON=m`, `VIDEOBUF2`).
 
 ### ⏱️ 2. Low-Latency Tuning (Gaming & High-Res Audio)
 - **Full Preemption**: Full preemptible kernel (`CONFIG_PREEMPT_BUILD=y`, `CONFIG_PREEMPT=y`) for immediate task response and minimal audio/input latency.
@@ -120,6 +144,7 @@ The guiding philosophy is **hardware/driver bloat removal while retaining securi
 - **Tickless Idle (`NO_HZ_IDLE`)**: Idle-tickless kernel (`CONFIG_NO_HZ_IDLE=y`) suppressing timer interrupts on idle CPUs, reducing wakeup overhead. Full tickless mode (`NO_HZ_FULL`) is intentionally not enabled to avoid scheduler complexity on this configuration.
 - **Hi-Res Audio Driver**: Dedicated Sound Blaster Z ALSA driver (`snd_ca0132` / Sound Core3D) configured for 32-bit / 192 kHz low-jitter audio.
 - **PlayStation DualSense & DualShock 4**: Dedicated Sony PlayStation HID driver (`CONFIG_HID_PLAYSTATION=m`, `CONFIG_PLAYSTATION_FF=y`) with full haptic Force Feedback for PS4/PS5 gamepads over USB and Bluetooth.
+- **Virtual User Input (`uinput`)**: Enabled `CONFIG_INPUT_UINPUT=m` for user-space input emulation (Steam Input, virtual gamepads, software controller remapping).
 
 ### 🧠 3. CPU Optimizations (AMD Ryzen 9 5950X — 16C / 32T)
 - **Native Architecture Compilation — two-layer optimization**:
@@ -128,7 +153,7 @@ The guiding philosophy is **hardware/driver bloat removal while retaining securi
   - Both flags are complementary and required for full native optimization; neither alone is sufficient.
 - **Core Scheduling**: Hardware SMT core scheduling enabled (`CONFIG_SCHED_CORE=y`) for thread isolation, security, and hyperthreading gaming performance.
 - **Sized Core Count**: Sized to `CONFIG_NR_CPUS=32` matching exact hardware threads, removing virtual CPU overhead.
-- **AMD P-State Driver**: Native `amd-pstate` CPPC driver with EPP enabled (`CONFIG_X86_AMD_PSTATE=y`, `CONFIG_X86_AMD_PSTATE_UT=y`) for microsecond-level frequency scaling.
+- **AMD P-State Driver**: Native `amd-pstate` CPPC driver with EPP enabled (`CONFIG_X86_AMD_PSTATE=y`) for microsecond-level frequency scaling (`# CONFIG_X86_AMD_PSTATE_UT is not set` in production).
 - **NUMA Infrastructure**: NUMA support is retained (`CONFIG_NUMA=y`, `CONFIG_AMD_NUMA=y`, `CONFIG_X86_64_ACPI_NUMA=y`) for correct hardware topology detection. Automatic NUMA balancing (`# CONFIG_NUMA_BALANCING is not set`) is disabled to eliminate background memory scan overhead on this single-node Ryzen system.
 - **eBPF Extensible Scheduler (`sched-ext`)**: Enabled in-kernel eBPF scheduler class (`CONFIG_SCHED_CLASS_EXT=y`). This exposes the `sched-ext` API that relies on the kernel BPF infrastructure (`CONFIG_BPF=y`, `CONFIG_BPF_SYSCALL=y`, `CONFIG_BPF_JIT=y`). External schedulers like `scx_bpfland` or `scx_rusty` can be loaded at runtime via userspace tools — they are **not** part of this kernel build.
 - **Extended Group Scheduling**: `CONFIG_EXT_GROUP_SCHED=y` enables the extended group scheduling infrastructure used by `sched-ext` and cgroup-aware scheduling policies.
@@ -144,11 +169,14 @@ The guiding philosophy is **hardware/driver bloat removal while retaining securi
 
 ### 🌐 5. Networking & Congestion Control
 - **TCP BBR Default**: Configured with **TCP BBR** as the default congestion control algorithm (`CONFIG_DEFAULT_TCP_CONG="bbr"`, `CONFIG_DEFAULT_BBR=y`). Eliminates bufferbloat and maximizes bandwidth throughput.
+- **Targeted Network Stack**: Includes Intel I211 (`igb`), Intel 10GbE (`ixgbe`), and Intel AX210 Wi-Fi 6E / Bluetooth 5.3 (`iwlwifi` / `btusb`).
 - **eBPF JIT & LSM**: JIT compiler enabled and active by default (`CONFIG_BPF_JIT=y`, `CONFIG_BPF_JIT_DEFAULT_ON=y`) alongside eBPF Security Module (`CONFIG_BPF_LSM=y`) for zero-overhead security hooks. `BPF_JIT_ALWAYS_ON` is intentionally not set, preserving runtime control via `net.core.bpf_jit_enable`.
 - **`IO_URING_ZCRX`**: Zero-copy network reception (`CONFIG_IO_URING_ZCRX=y`) enabled for ultra-fast socket I/O.
 
-### 💾 6. Memory Tuning (Zswap `lzo`)
+### 💾 6. Memory Tuning (Zswap, ZRAM & Loop)
 - **Zswap Storage**: Native `zswap` with `lzo` compressor (`CONFIG_ZSWAP=y`, `CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO=y`) matching kernel boot parameters.
+- **ZRAM Compressed RAM Devices**: `CONFIG_ZRAM=y` (`zram.comp=lzo-rle`) enabled for compressed swap/RAM block devices.
+- **Loop & RAM Disk Devices**: `CONFIG_BLK_DEV_LOOP=m` and `CONFIG_BLK_DEV_RAM=m` enabled for mounting disk images and loopback/RAM devices.
 - **Transparent Hugepages (`madvise`)**: Set THP default to `madvise` (`CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y`) alongside memory compaction (`CONFIG_COMPACTION=y`) to prevent system-wide memory bloat while enabling 2MB hugepages for opt-in applications (games, emulators, KVM).
 
 ### 🛠️ 7. Diagnostics & Tracing Infrastructure
@@ -174,6 +202,7 @@ This kernel is **not** a "performance at all costs" build — all CPU security m
 - **User Shadow Stack**: CET Shadow Stack for user-space enabled (`CONFIG_X86_USER_SHADOW_STACK=y`) for return address protection.
 
 The security philosophy is **hardware/driver bloat removal** — not security regression.
+
 
 ---
 
@@ -270,7 +299,7 @@ After booting into the custom kernel, verify active optimizations using the foll
 #### Kernel version
 ```bash
 $ uname -a
-Linux debian 7.2.8-ryzen9 #ryzen9 SMP PREEMPT_DYNAMIC Tue Sep 29 23:45:16 CEST 2026 x86_64 GNU/Linux
+Linux debian 7.2.8-ryzen9 #ryzen9 SMP PREEMPT_DYNAMIC Thu Oct  1 23:31:21 CEST 2026 x86_64 GNU/Linux
 ```
 
 #### CPU topology
