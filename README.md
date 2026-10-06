@@ -102,6 +102,7 @@ graph TD
 | **PlayStation Controllers**| `CONFIG_HID_PLAYSTATION=m` / `CONFIG_PLAYSTATION_FF=y` | Sony DualSense (PS5) & DualShock 4 (PS4) controller support with haptic Force Feedback over USB and Bluetooth. |
 | **Virtual User Input** | `CONFIG_INPUT_UINPUT=m` | User-space `/dev/uinput` interface for input emulation, virtual gamepads, and software remapping (Steam Input). |
 | **USB Webcams & Video** | `CONFIG_USB_VIDEO_CLASS=m` / `CONFIG_VIDEOBUF2_V4L2=m` | Video4Linux2 pipeline and UVC driver for USB webcams with physical evdev button support. |
+| **Legacy USB Webcams (GSPCA)** | `CONFIG_USB_GSPCA=m` / `CONFIG_USB_GSPCA_OV519=m` | GSPCA framework with OV519 subdriver for legacy Sony PlayStation 2 EyeToy (OV7630/OV7648) USB webcam support. |
 | **Legacy USB Controllers** | `CONFIG_USB_EHCI_HCD=m` / `OHCI` / `UHCI` | USB 2.0 and 1.1 host controller drivers for maximum legacy USB peripheral compatibility. |
 
 ### 🔐 Security, Integrity & Diagnostics
@@ -136,7 +137,7 @@ The guiding philosophy is **aggressive module & bloat removal (91% module reduct
 - **AMD IOMMU Isolation**: Native AMD Vi IOMMU driver enabled (`CONFIG_AMD_IOMMU=y`), while disabling unused Intel DMAR overhead (`# CONFIG_INTEL_IOMMU is not set`).
 - **Legacy Radeon Driver Disabled**: Legacy Radeon DRM driver disabled (`# CONFIG_DRM_RADEON is not set`), ensuring exclusive `amdgpu` driver stack execution.
 - **Legacy Controllers & Buses**: Removed floppy, parallel ports (`PARPORT`), PCMCIA/CardBus, FireWire (IEEE1394), ISDN, and analog modems, while retaining legacy USB host controllers (`CONFIG_USB_EHCI_HCD=m`, `CONFIG_USB_OHCI_HCD=m`, `CONFIG_USB_UHCI_HCD=m`) for full legacy USB 1.1/2.0 device compatibility.
-- **DVB & TV Capture Removal**: Disabled DVB digital/analog TV, SDR radio, and PCI capture cards (`# CONFIG_DVB_CORE is not set`, `# CONFIG_MEDIA_PCI_SUPPORT is not set`), while preserving USB webcam support (`CONFIG_USB_VIDEO_CLASS=m`, `CONFIG_UVC_COMMON=m`, `VIDEOBUF2`).
+- **DVB & TV Capture Removal**: Disabled DVB digital/analog TV, SDR radio, and PCI capture cards (`# CONFIG_DVB_CORE is not set`, `# CONFIG_MEDIA_PCI_SUPPORT is not set`), while preserving USB webcam support (`CONFIG_USB_VIDEO_CLASS=m`, `CONFIG_UVC_COMMON=m`, `VIDEOBUF2`) and legacy GSPCA webcams (`CONFIG_USB_GSPCA=m`, `CONFIG_USB_GSPCA_OV519=m` for Sony PS2 EyeToy).
 
 ### ⏱️ 2. Low-Latency Tuning (Gaming & High-Res Audio)
 - **Full Preemption**: Full preemptible kernel (`CONFIG_PREEMPT_BUILD=y`, `CONFIG_PREEMPT=y`) for immediate task response and minimal audio/input latency.
@@ -145,6 +146,7 @@ The guiding philosophy is **aggressive module & bloat removal (91% module reduct
 - **Hi-Res Audio Driver**: Dedicated Sound Blaster Z ALSA driver (`snd_ca0132` / Sound Core3D) configured for 32-bit / 192 kHz low-jitter audio.
 - **PlayStation DualSense & DualShock 4**: Dedicated Sony PlayStation HID driver (`CONFIG_HID_PLAYSTATION=m`, `CONFIG_PLAYSTATION_FF=y`) with full haptic Force Feedback for PS4/PS5 gamepads over USB and Bluetooth.
 - **Virtual User Input (`uinput`)**: Enabled `CONFIG_INPUT_UINPUT=m` for user-space input emulation (Steam Input, virtual gamepads, software controller remapping).
+- **Legacy USB Webcam (GSPCA/OV519)**: Enabled `CONFIG_USB_GSPCA=m` and `CONFIG_USB_GSPCA_OV519=m` for Sony PlayStation 2 EyeToy (OV7630/OV7648 sensor) support via the Video4Linux2 GSPCA framework.
 
 ### 🧠 3. CPU Optimizations (AMD Ryzen 9 5950X — 16C / 32T)
 - **Native Architecture Compilation — two-layer optimization**:
