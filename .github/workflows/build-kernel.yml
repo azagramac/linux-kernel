@@ -10,6 +10,7 @@ on:
         options:
           - 'AMD Ryzen 9'
           - 'Lenovo Thinkpad T440p'
+          - 'Both'
         default: 'AMD Ryzen 9'
       tag:
         description: '🏷️ Git tag from torvalds/linux repo (used if no URL)'
@@ -44,10 +45,8 @@ jobs:
 
     outputs:
       kernel_tag: ${{ steps.kernel_source.outputs.kernel_tag }}
-      target: ${{ steps.target_config.outputs.target }}
-      config_path: ${{ steps.target_config.outputs.config_path }}
-      arch_flags: ${{ steps.target_config.outputs.arch_flags }}
-      local_version: ${{ steps.target_config.outputs.local_version }}
+      targets_matrix: ${{ steps.matrix_config.outputs.targets_matrix }}
+      target_choice: ${{ inputs.target }}
 
     steps:
       - name: 🛠️ Prepare container base tools
@@ -60,46 +59,52 @@ jobs:
         with:
           fetch-depth: 10
 
-      - name: ⚙️ Install build dependencies
+      - name: ⚙️ Install base build dependencies
         run: |
-          sudo apt install -y git build-essential gcc-14 g++-14 fakeroot bc bison flex libdw-dev libelf-dev libssl-dev \
-            libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch kmod
+          sudo apt install -y git build-essential gcc-14 g++-14 bc bison flex curl jq patch
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
-      - name: ⚙️ Determine target configuration and flags
-        id: target_config
+      - name: 🎯 Determine build targets matrix
+        id: matrix_config
         shell: bash
         run: |
           TARGET="${{ inputs.target }}"
           echo "Target chosen: $TARGET"
 
-          if [ "$TARGET" = "Lenovo Thinkpad T440p" ]; then
-            CONFIG_PATH="stable/config-6.19.14-t440p-debian13-signed"
-            ARCH_FLAGS="-march=haswell -mtune=haswell"
-            LOCAL_VER="-t440p"
+          if [ -f "configs/stable/config-6.19.14-ryzen9-debian13-signed" ]; then
+            RYZEN_CONFIG="stable/config-6.19.14-ryzen9-debian13-signed"
+          elif [ -f "configs/stable/config-6.19.14-debian13-signed" ]; then
+            RYZEN_CONFIG="stable/config-6.19.14-debian13-signed"
           else
-            if [ -f "configs/stable/config-6.19.14-debian13-signed" ]; then
-              CONFIG_PATH="stable/config-6.19.14-debian13-signed"
-            elif [ -f "configs/stable/config-6.19.14-ryzen9-debian13-signed" ]; then
-              CONFIG_PATH="stable/config-6.19.14-ryzen9-debian13-signed"
-            else
-              CONFIG_PATH="stable/config-6.19.14-debian13-signed"
-            fi
-            ARCH_FLAGS="-march=znver3"
-            LOCAL_VER="-ryzen9"
+            RYZEN_CONFIG="stable/config-6.19.14-ryzen9-debian13-signed"
           fi
 
-          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
-          echo "config_path=$CONFIG_PATH" >> "$GITHUB_OUTPUT"
-          echo "arch_flags=$ARCH_FLAGS" >> "$GITHUB_OUTPUT"
-          echo "local_version=$LOCAL_VER" >> "$GITHUB_OUTPUT"
+          LENOVO_CONFIG="stable/config-6.19.14-t440p-debian13-signed"
 
+          RYZEN_JSON="{\"id\":\"ryzen9\",\"name\":\"AMD Ryzen 9\",\"config_path\":\"$RYZEN_CONFIG\",\"arch_flags\":\"-march=znver3\",\"local_version\":\"-ryzen9\"}"
+          LENOVO_JSON="{\"id\":\"t440p\",\"name\":\"Lenovo Thinkpad T440p\",\"config_path\":\"$LENOVO_CONFIG\",\"arch_flags\":\"-march=haswell -mtune=haswell\",\"local_version\":\"-t440p\"}"
+
+          case "$TARGET" in
+            "AMD Ryzen 9")
+              MATRIX="[$RYZEN_JSON]"
+              ;;
+            "Lenovo Thinkpad T440p")
+              MATRIX="[$LENOVO_JSON]"
+              ;;
+            "Both")
+              MATRIX="[$RYZEN_JSON,$LENOVO_JSON]"
+              ;;
+            *)
+              echo "❌ Invalid target: $TARGET"
+              exit 1
+              ;;
+          esac
+
+          echo "targets_matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "========================================="
-          echo "🎯 Target         : $TARGET"
-          echo "📄 Config path    : $CONFIG_PATH"
-          echo "🏗️ Arch flags     : $ARCH_FLAGS"
-          echo "🏷️ Local version  : $LOCAL_VER"
+          echo "🎯 Target Option  : $TARGET"
+          echo "📦 Targets Matrix : $MATRIX"
           echo "========================================="
 
       - name: 📥 Download kernel tarball
@@ -149,7 +154,6 @@ jobs:
             echo "Provide either a valid kernel tarball URL or a valid Linux kernel tag."
             exit 1
           fi
-
           echo "✅ Kernel source verified"
 
       - name: 🏷️ Determine kernel source version
@@ -165,50 +169,24 @@ jobs:
           echo "kernel_tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "🏷️ Kernel source version: $TAG"
 
-      - name: 📄 Apply kernel config
-        shell: bash
-        run: |
-          CONFIG_INPUT="${{ steps.target_config.outputs.config_path }}"
-
-          if [ -f "configs/${CONFIG_INPUT}" ]; then
-            echo "📋 Using local config configs/${CONFIG_INPUT}..."
-            cp "configs/${CONFIG_INPUT}" kernel_build/.config
-          else
-            CONFIG_URL="${RAW_BASE_URL}configs/${CONFIG_INPUT}"
-            echo "⬇️ Downloading config from $CONFIG_URL..."
-
-            curl -fL --retry 3 --retry-all-errors \
-              -o kernel_build/.config \
-              "$CONFIG_URL"
-          fi
-
-          cd kernel_build
-          echo "🔧 Applying configuration and running olddefconfig..."
-          make olddefconfig
-
-      - name: 🔍 Show kernel version
-        working-directory: kernel_build
-        run: |
-          echo "🏷️ Kernel to be built: $(make kernelrelease)"
-
-      - name: 📤 Upload prepared kernel source artifact
+      - name: 📤 Upload prepared clean kernel source artifact
         uses: actions/upload-artifact@v7
         with:
           name: prepared-kernel-source
           path: kernel_build/
           include-hidden-files: true
 
-  build-and-release:
-    name: 🐧 2. Build Kernel & Publish Release
+  build:
+    name: 🐧 2. Build (${{ matrix.target.name }})
     needs: prepare
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.prepare.outputs.targets_matrix) }}
     container:
       image: debian:trixie
       options: -v /:/host
-
-    outputs:
-      kernel_version: ${{ steps.get_version.outputs.version }}
-      release_description: ${{ steps.release_body.outputs.description }}
 
     steps:
       - name: 🛠️ Prepare container base tools
@@ -238,6 +216,27 @@ jobs:
         with:
           name: prepared-kernel-source
           path: kernel_build
+
+      - name: 📄 Apply kernel config for target
+        shell: bash
+        run: |
+          CONFIG_INPUT="${{ matrix.target.config_path }}"
+          echo "Applying config: $CONFIG_INPUT for ${{ matrix.target.name }}"
+
+          if [ -f "configs/${CONFIG_INPUT}" ]; then
+            echo "📋 Using local config configs/${CONFIG_INPUT}..."
+            cp "configs/${CONFIG_INPUT}" kernel_build/.config
+          else
+            CONFIG_URL="${RAW_BASE_URL}configs/${CONFIG_INPUT}"
+            echo "⬇️ Downloading config from $CONFIG_URL..."
+            curl -fL --retry 3 --retry-all-errors \
+              -o kernel_build/.config \
+              "$CONFIG_URL"
+          fi
+
+          cd kernel_build
+          echo "🔧 Applying configuration and running olddefconfig..."
+          make olddefconfig
 
       - name: 🔑 Inject MOK certificates from secrets
         working-directory: kernel_build
@@ -269,10 +268,10 @@ jobs:
           find . -type f \( -name "*.sh" -o -name "*.pl" -o -name "*.py" \) -exec chmod +x {} +
 
           KERNEL_VER=$(make kernelversion)
-          CONFIG_INPUT="${{ needs.prepare.outputs.config_path }}"
-          LOCAL_VER="${{ needs.prepare.outputs.local_version }}"
-          ARCH_FLAGS="${{ needs.prepare.outputs.arch_flags }}"
-          TARGET="${{ needs.prepare.outputs.target }}"
+          CONFIG_INPUT="${{ matrix.target.config_path }}"
+          LOCAL_VER="${{ matrix.target.local_version }}"
+          ARCH_FLAGS="${{ matrix.target.arch_flags }}"
+          TARGET="${{ matrix.target.name }}"
 
           echo "========================================="
           echo "🐧 Environment Build"
@@ -290,8 +289,8 @@ jobs:
           echo "Make           : $(make --version | head -n1)"
           echo "========================================="
 
-          BUILD_LOG="../build.log"
-          ERROR_LOG="../build-error.log"
+          BUILD_LOG="../build-${{ matrix.target.id }}.log"
+          ERROR_LOG="../build-error-${{ matrix.target.id }}.log"
 
           rm -f "$BUILD_LOG" "$ERROR_LOG"
 
@@ -305,19 +304,19 @@ jobs:
               2>&1 | tee "$BUILD_LOG"
           then
               echo "========================================="
-              echo "✅ Kernel compilation completed successfully"
+              echo "✅ Kernel compilation completed successfully for $TARGET"
               echo "========================================="
           else
               BUILD_EXIT=${PIPESTATUS[0]}
 
               echo "========================================="
-              echo "❌ Kernel compilation FAILED"
+              echo "❌ Kernel compilation FAILED for $TARGET"
               echo "Exit code: $BUILD_EXIT"
               echo "========================================="
 
               {
                 echo "========================================="
-                echo "POSSIBLE ROOT CAUSES"
+                echo "POSSIBLE ROOT CAUSES ($TARGET)"
                 echo "========================================="
 
                 grep -nEi \
@@ -326,7 +325,7 @@ jobs:
 
                 echo
                 echo "========================================="
-                echo "LAST 150 LINES"
+                echo "LAST 150 LINES ($TARGET)"
                 echo "========================================="
 
                 tail -n 150 "$BUILD_LOG"
@@ -338,41 +337,100 @@ jobs:
               exit "$BUILD_EXIT"
           fi
 
-      - name: 🆔 Get compiled kernel version
-        id: get_version
-        working-directory: kernel_build
-        run: |
-          echo "version=$(make kernelrelease)" >> $GITHUB_OUTPUT
-
       - name: 🔒 Securely remove MOK signing key
         if: always()
         run: |
           rm -f kernel_build/certs/MOK-signing.pem kernel_build/certs/MOK.pem
 
-      - name: 📦 Move .deb & log artifacts
+      - name: 📦 Move .deb, logs & prepare release notes snippet
         if: always()
+        shell: bash
         run: |
           mkdir -p artifacts
 
-          echo "📦 Collecting build artifacts..."
+          echo "📦 Collecting build artifacts for ${{ matrix.target.name }}..."
 
-          find . -name "*.deb" -exec cp {} artifacts/ \; || true
-          find . -name "*.changes" -exec cp {} artifacts/ \; || true
-          find . -name "*.buildinfo" -exec cp {} artifacts/ \; || true
+          find . -maxdepth 1 -name "*.deb" -exec cp {} artifacts/ \; || true
+          find . -maxdepth 1 -name "*.changes" -exec cp {} artifacts/ \; || true
+          find . -maxdepth 1 -name "*.buildinfo" -exec cp {} artifacts/ \; || true
 
-          if [ -f build.log ]; then
-            cp build.log artifacts/build.log
-            echo "✅ build.log saved"
+          if [ -f "build-${{ matrix.target.id }}.log" ]; then
+            cp "build-${{ matrix.target.id }}.log" "artifacts/build-${{ matrix.target.id }}.log"
           fi
 
-          if [ -f build-error.log ]; then
-            cp build-error.log artifacts/build-error.log
-            echo "❌ build-error.log saved"
+          if [ -f "build-error-${{ matrix.target.id }}.log" ]; then
+            cp "build-error-${{ matrix.target.id }}.log" "artifacts/build-error-${{ matrix.target.id }}.log"
           fi
 
-          echo
+          CHANGES_FILE=$(find . -maxdepth 1 -name "*${{ matrix.target.local_version }}*.changes" | head -n1)
+          if [ -z "$CHANGES_FILE" ]; then
+            CHANGES_FILE=$(find . -maxdepth 1 -name "*.changes" | head -n1)
+          fi
+
+          if [ -n "$CHANGES_FILE" ]; then
+            get_field() {
+              awk -F': ' -v key="$1" '$1==key {print $2}' "$CHANGES_FILE"
+            }
+
+            FORMAT=$(get_field "Format")
+            DATE=$(get_field "Date")
+            SOURCE=$(get_field "Source")
+            ARCH=$(get_field "Architecture")
+            VERSION=$(get_field "Version")
+            DIST=$(get_field "Distribution")
+            URGENCY=$(get_field "Urgency")
+            MAINTAINER=$(get_field "Maintainer")
+            CHANGED_BY=$(get_field "Changed-By")
+            BINARIES=$(get_field "Binary" | sed 's/ /\` \`/g; s/^/\`/; s/$/\`/')
+
+            DESCRIPTION=$(awk '
+              /^Description:/ {flag=1; next}
+              /^Changes:/ {flag=0}
+              flag && NF {print " - "$0}
+            ' "$CHANGES_FILE")
+
+            SHA1=$(awk '
+              /^Checksums-Sha1:/ {flag=1; next}
+              /^Checksums-Sha256:/ {flag=0}
+              flag && NF {print}
+            ' "$CHANGES_FILE")
+
+            SHA256=$(awk '
+              /^Checksums-Sha256:/ {flag=1; next}
+              /^Files:/ {flag=0}
+              flag && NF {print}
+            ' "$CHANGES_FILE")
+
+            FILES=$(awk '
+              /^Files:/ {flag=1; next}
+              flag && NF {print}
+            ' "$CHANGES_FILE")
+
+            cat <<EOF > "artifacts/release-section-${{ matrix.target.id }}.md"
+          ### 🎯 Target: ${{ matrix.target.name }}
+          - **Version:** $VERSION  
+          - **Architecture:** $ARCH (${{ matrix.target.arch_flags }})  
+          - **Config:** \`${{ matrix.target.config_path }}\`  
+          - **Binary Packages:** $BINARIES  
+          - **Distribution:** $DIST | **Date:** $DATE  
+
+          #### 📝 Description:
+          $DESCRIPTION
+
+          #### ✅ Checksums-Sha256:
+          \`\`\`text
+          $SHA256
+          \`\`\`
+
+          #### 📦 Files:
+          \`\`\`text
+          $FILES
+          \`\`\`
+          EOF
+          fi
+
           echo "========================================="
-          echo "📁 Collected artifacts"
+          echo "📁 Collected artifacts for ${{ matrix.target.name }}"
           echo "========================================="
           ls -lh artifacts/
 
@@ -380,216 +438,162 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: compiled-kernel-artifacts
+          name: compiled-kernel-artifacts-${{ matrix.target.id }}
           path: artifacts/
 
-      - name: 📋 Generate formatted release body from .changes
+  release:
+    name: 🚀 3. Publish Unified Release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    if: success()
+
+    outputs:
+      release_body: ${{ steps.release_body.outputs.body }}
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v7
+
+      - name: 📥 Download all compiled kernel artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: compiled-kernel-artifacts-*
+          path: all-artifacts
+          merge-multiple: true
+
+      - name: 📋 Generate unified release notes
         id: release_body
         shell: bash
         run: |
-          CHANGES_FILE=$(find . -name "*.changes" | head -n1)
-
-          if [ -z "$CHANGES_FILE" ]; then
-            echo "❌ No .changes file found in workspace or artifacts directory"
-            echo "📁 Content of root directory:"
-            ls -la
-            echo "📁 Content of artifacts directory:"
-            ls -la artifacts/ || true
-            exit 1
-          fi
-
-          get_field() {
-            awk -F': ' -v key="$1" '$1==key {print $2}' "$CHANGES_FILE"
-          }
-
-          FORMAT=$(get_field "Format")
-          DATE=$(get_field "Date")
-          SOURCE=$(get_field "Source")
-          ARCH=$(get_field "Architecture")
-          VERSION=$(get_field "Version")
-          DIST=$(get_field "Distribution")
-          URGENCY=$(get_field "Urgency")
-          MAINTAINER=$(get_field "Maintainer")
-          CHANGED_BY=$(get_field "Changed-By")
-
-          BINARIES=$(get_field "Binary" | sed 's/ /\` \`/g; s/^/\`/; s/$/\`/')
-
-          DESCRIPTION=$(awk '
-            /^Description:/ {flag=1; next}
-            /^Changes:/ {flag=0}
-            flag && NF {print " - "$0}
-          ' "$CHANGES_FILE")
-
-          SHA1=$(awk '
-            /^Checksums-Sha1:/ {flag=1; next}
-            /^Checksums-Sha256:/ {flag=0}
-            flag && NF {print}
-          ' "$CHANGES_FILE")
-
-          SHA256=$(awk '
-            /^Checksums-Sha256:/ {flag=1; next}
-            /^Files:/ {flag=0}
-            flag && NF {print}
-          ' "$CHANGES_FILE")
-
-          FILES=$(awk '
-            /^Files:/ {flag=1; next}
-            flag && NF {print}
-          ' "$CHANGES_FILE")
-
           GIT_CHANGELOG=$(git log -n 10 --pretty=format:"* %h - %s (%an, %cr)" 2>/dev/null || echo " * Custom built Linux kernel.")
 
-          cat <<EOF > release.md
-          **Target:** ${{ needs.prepare.outputs.target }}  
-          **Format:** $FORMAT  
-          **Date:** $DATE  
-          **Source:** $SOURCE  
-          **Binary:** $BINARIES  
-          **Architecture:** $ARCH  
-          **Version:** $VERSION  
-          **Distribution:** $DIST  
-          **Urgency:** $URGENCY  
-          **Maintainer:** $MAINTAINER  
-          **Changed-By:** $CHANGED_BY  
+          {
+            echo "## 🐧 Linux Kernel Release (${{ needs.prepare.outputs.kernel_tag }})"
+            echo
+            echo "**Target Selection:** ${{ needs.prepare.outputs.target_choice }}"
+            echo
+            echo "---"
+            echo
 
-          ## 📝 Description:
-          $DESCRIPTION
+            for section in all-artifacts/release-section-*.md; do
+              if [ -f "$section" ]; then
+                cat "$section"
+                echo
+                echo "---"
+                echo
+              fi
+            done
 
-          ## 🔄 ChangeLog:
-          $GIT_CHANGELOG
-
-          ## ✅ Checksums-Sha1:
-          \`\`\`bash
-          $SHA1
-          \`\`\`
-
-          ## ✅ Checksums-Sha256:
-          \`\`\`bash
-          $SHA256
-          \`\`\`
-
-          ## 📦 Files:
-          \`\`\`bash
-          $FILES
-          \`\`\`
-          EOF
+            echo "### 🔄 Git ChangeLog:"
+            echo "$GIT_CHANGELOG"
+          } > release.md
 
           echo "body<<EOF" >> "$GITHUB_OUTPUT"
           cat release.md >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
-          echo "description<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$DESCRIPTION" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-
-      - name: 🚀 Upload Linux Kernel
+      - name: 🚀 Upload Unified GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: kernel-${{ github.run_number }}
-          name: "Kernel ${{ steps.get_version.outputs.version }}"
+          name: "Kernel ${{ needs.prepare.outputs.kernel_tag }} (Build #${{ github.run_number }})"
           body: ${{ steps.release_body.outputs.body }}
           files: |
-            artifacts/*.deb
-            artifacts/*.buildinfo
+            all-artifacts/*.deb
+            all-artifacts/*.buildinfo
+            all-artifacts/*.changes
           overwrite_files: true
-          generate_release_notes: true
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   notify-telegram:
-    name: 📤 3. Telegram Notification
-    needs: [prepare, build-and-release]
+    name: 📤 4. Telegram Notification
+    needs: [prepare, build, release]
     if: always()
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Download Compiled Artifacts
+      - name: 📥 Download all compiled artifacts & logs
         uses: actions/download-artifact@v8
         with:
-          name: compiled-kernel-artifacts
+          pattern: compiled-kernel-artifacts-*
           path: artifacts/
+          merge-multiple: true
         continue-on-error: true
 
       - name: 📤 Send Telegram notification
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHATID: ${{ secrets.TELEGRAM_CHATID }}
-          BUILD_STATUS: ${{ needs.build-and-release.result }}
-          KERNEL_VERSION: ${{ needs.build-and-release.outputs.kernel_version }}
-          PKG_DESCRIPTION: ${{ needs.build-and-release.outputs.release_description }}
-          TARGET: ${{ needs.prepare.outputs.target }}
-          KERNEL_CONFIG: ${{ needs.prepare.outputs.config_path }}
-          KERNEL_URL: ${{ inputs.url }}
+          BUILD_STATUS: ${{ needs.build.result }}
+          RELEASE_STATUS: ${{ needs.release.result }}
           KERNEL_TAG: ${{ needs.prepare.outputs.kernel_tag }}
-          KERNEL_LOCALVERSION: ${{ needs.prepare.outputs.local_version }}
-          ARCH_FLAGS: ${{ needs.prepare.outputs.arch_flags }}
+          TARGET_CHOICE: ${{ needs.prepare.outputs.target_choice }}
+          KERNEL_URL: ${{ inputs.url }}
         run: |
           RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-          if [ "$BUILD_STATUS" = "success" ]; then
-            CLEAN_DESC=$(echo "$PKG_DESCRIPTION" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-
-            if [ -z "$CLEAN_DESC" ]; then
-              CLEAN_DESC=" - No disponible"
+          if [ "$BUILD_STATUS" = "success" ] && [ "$RELEASE_STATUS" = "success" ]; then
+            DEB_LIST=$(find artifacts/ -name "*.deb" -exec basename {} \; 2>/dev/null | sort -u | sed 's/^/ • /')
+            if [ -z "$DEB_LIST" ]; then
+              DEB_LIST=" • Paquetes generados correctamente"
             fi
 
             MESSAGE="<b>🐧 Linux Kernel Build ✅ Success</b>
 
-            🎯 <b>Objetivo:</b> ${TARGET}
-            🏷️ <b>Versión:</b> ${KERNEL_VERSION:-Desconocida}
-            ⚙️ <b>Config:</b> ${KERNEL_CONFIG}
-            🏗️ <b>Flags:</b> <code>${ARCH_FLAGS}</code>
+          🎯 <b>Objetivo(s):</b> ${TARGET_CHOICE}
+          🏷️ <b>Versión Base:</b> ${KERNEL_TAG:-Desconocida}
+          🚀 <b>Release:</b> <a href=\"https://github.com/${GITHUB_REPOSITORY}/releases/tag/kernel-${GITHUB_RUN_ID}\">kernel-${GITHUB_RUN_ID}</a>
 
-            📦 <b>Ficheros:</b>
-            ${CLEAN_DESC}
+          📦 <b>Paquetes .deb generados:</b>
+          <code>${DEB_LIST}</code>
 
-            🏷️ <b>Workflow:</b>
-            🔗 <a href=\"${RUN_URL}\">Link to GitHub</a>"
+          🏷️ <b>Workflow:</b>
+          🔗 <a href=\"${RUN_URL}\">Link to GitHub</a>"
 
           else
-            ERROR_LOG=""
+            ERROR_SNIPPET=""
+            for err_file in artifacts/build-error-*.log; do
+              if [ -f "$err_file" ]; then
+                SNIP=$(tail -n 30 "$err_file" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+                ERROR_SNIPPET="${ERROR_SNIPPET}
+          <b>[$(basename "$err_file")]:</b>
+          <pre>${SNIP}</pre>"
+              fi
+            done
 
-            if [ -f artifacts/build-error.log ]; then
-              ERROR_SNIPPET=$(tail -n 40 artifacts/build-error.log | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            if [ -z "$ERROR_SNIPPET" ]; then
+              for log_file in artifacts/build-*.log; do
+                if [ -f "$log_file" ]; then
+                  SNIP=$(tail -n 30 "$log_file" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+                  ERROR_SNIPPET="${ERROR_SNIPPET}
+          <b>[$(basename "$log_file")]:</b>
+          <pre>${SNIP}</pre>"
+                fi
+              done
+            fi
 
-              ERROR_LOG="
-              📋 <b>Diagnóstico del error:</b>
-              <pre>${ERROR_SNIPPET}</pre>"
-
-            elif [ -f artifacts/build.log ]; then
-              ERROR_SNIPPET=$(tail -n 40 artifacts/build.log | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-
-              ERROR_LOG="
-              📋 <b>Últimas líneas del build.log:</b>
-              <pre>${ERROR_SNIPPET}</pre>"
-
-            else
-              ERROR_LOG="
-              ⚠️ <b>No se encontró ningún log de compilación.</b>"
+            if [ -z "$ERROR_SNIPPET" ]; then
+              ERROR_SNIPPET="⚠️ <b>No se encontró ningún log detallado de error en los artefactos.</b>"
             fi
 
             SRC_INFO="${KERNEL_TAG}"
-
             if [ -z "$SRC_INFO" ]; then
               SRC_INFO="${KERNEL_URL:-$DEFAULT_URL}"
             fi
 
-            if [ -z "$SRC_INFO" ]; then
-              SRC_INFO="No especificado"
-            fi
+            MESSAGE="<b>🐧 Linux Kernel Build ❌ Fallido (Build: ${BUILD_STATUS^}, Release: ${RELEASE_STATUS^})</b>
 
-            MESSAGE="<b>🐧 Linux Kernel Build ❌ Fallido (${BUILD_STATUS^})</b>
+          ⚠️ <b>Parámetros de la ejecución:</b>
+          • <b>Objetivo(s):</b> ${TARGET_CHOICE}
+          • <b>Origen:</b> ${SRC_INFO}
 
-            ⚠️ <b>Parámetros de la ejecución:</b>
-            • <b>Objetivo:</b> ${TARGET}
-            • <b>Config:</b> ${KERNEL_CONFIG}
-            • <b>Origen:</b> ${SRC_INFO}
-            • <b>Localversion:</b> ${KERNEL_LOCALVERSION}
-            • <b>Flags:</b> <code>${ARCH_FLAGS}</code>
-            ${ERROR_LOG}
+          📋 <b>Diagnóstico del error:</b>
+          ${ERROR_SNIPPET}
 
-            🏷️ <b>Workflow:</b>
-            🔗 <a href=\"${RUN_URL}\">Ver logs completos en GitHub Actions</a>"
+          🏷️ <b>Workflow:</b>
+          🔗 <a href=\"${RUN_URL}\">Ver logs completos en GitHub Actions</a>"
           fi
 
           curl -s -X POST \
