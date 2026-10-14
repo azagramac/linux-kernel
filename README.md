@@ -7,9 +7,10 @@ system resources, and provides the fundamental services for all other software.
 -----------
 
 [![Linux Kernel](https://img.shields.io/badge/dynamic/json?label=Linux%20Kernel&query=latest_stable.version&url=https%3A%2F%2Fwww.kernel.org%2Freleases.json&color=FFD133)](https://kernel.org/)
-[![Kernel Version](https://img.shields.io/github/v/release/azagramac/linux-kernel?label=Kernel&color=blue&display_name=release)](https://github.com/azagramac/linux-kernel/releases)
+[![Custom Kernel](https://img.shields.io/github/v/release/azagramac/linux-kernel?label=Custom%20Kernel&color=ffcc33&display_name=release)](https://github.com/azagramac/linux-kernel/releases)
 
-[![Target CPU](https://img.shields.io/badge/Architecture-AMD%20Zen%203-FF8500.svg)](https://www.amd.com/es/technologies/zen-core.html#generations)
+[![Target Ryzen9](https://img.shields.io/badge/Arch-AMD%20Zen%203-FF8500.svg)](https://www.amd.com/en/products/processors/desktops/ryzen/5000-series/amd-ryzen-9-5950x.html)
+[![Target T440p](https://img.shields.io/badge/Arch-Intel%20Haswell-0071c5.svg)](https://www.intel.la/content/www/xl/es/products/sku/75117/intel-core-i74700mq-processor-6m-cache-up-to-3-40-ghz/specifications.html)
 [![Target OS](https://img.shields.io/badge/OS-Debian%2013%20Trixie-a80030.svg)](https://cdimage.debian.org/debian-cd/current/amd64/iso-dvd/)
 [![Compiler](https://img.shields.io/badge/Compiler-GCC%2014.2.0-green.svg)](https://gcc.gnu.org/gcc-14/)
 
