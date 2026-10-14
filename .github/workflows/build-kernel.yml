@@ -217,6 +217,11 @@ jobs:
           name: prepared-kernel-source
           path: kernel_build
 
+      - name: 🔧 Restore execution permissions on kernel scripts
+        run: |
+          chmod -R +x kernel_build/scripts/
+          find kernel_build -type f \( -name "*.sh" -o -name "*.pl" -o -name "*.py" \) -exec chmod +x {} +
+
       - name: 📄 Apply kernel config for target
         shell: bash
         run: |
@@ -235,8 +240,15 @@ jobs:
           fi
 
           cd kernel_build
+          chmod -R +x scripts/
+          find . -type f \( -name "*.sh" -o -name "*.pl" -o -name "*.py" \) -exec chmod +x {} +
+
           echo "🔧 Applying configuration and running olddefconfig..."
-          make olddefconfig
+          if ! make olddefconfig 2>&1 | tee ../build-config.log; then
+            mkdir -p ../artifacts
+            cp ../build-config.log "../artifacts/build-error-${{ matrix.target.id }}.log"
+            exit 1
+          fi
 
       - name: 🔑 Inject MOK certificates from secrets
         working-directory: kernel_build
