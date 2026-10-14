@@ -17,7 +17,7 @@ system resources, and provides the fundamental services for all other software.
 
 ## Last build
 
-<img width="954" height="533" alt="image" src="https://github.com/user-attachments/assets/1ff46fc9-86ee-4217-9439-769c86bcdb7a" />
+<img width="972" height="533" alt="terminal" src="https://github.com/user-attachments/assets/e52cbb40-3ae0-47d2-9d1f-056812e88d77" />
 
 ---
 
@@ -114,6 +114,7 @@ graph TD
 | **eBPF Security (LSM)** | `CONFIG_BPF_LSM=y` / `CONFIG_BPF_JIT=y` | In-kernel eBPF Linux Security Module with eBPF JIT compiler enabled and active by default. |
 | **Stack Unwinder & Tracing**| `UNWINDER_ORC=y` / `DEBUG_INFO_BTF=y` | Low-overhead ORC call stack unwinding and Pahole split-BTF typeinfo for eBPF/ftrace kernel profiling. |
 | **Module Cleanup (91%)** | 233 Essential Modules (`=m`) | Massive 91% reduction in loadable modules (from 2,631 to 233). Removed unused Intel/NVIDIA GPUs, unused network vendors, and TV/DVB cards. |
+| **Signed Modules & Secure Boot**| `CONFIG_MODULE_SIG=y` / `CONFIG_SYSTEM_TRUSTED_KEYS` | Cryptographic signature validation for loadable modules (`SHA-256`) and full UEFI Secure Boot compatibility via MOK. |
 
 ---
 
@@ -449,13 +450,90 @@ This allows the packaged kernel to be verified independently of the source-tree 
 
 ---
 
+## 🔏 16. Secure Boot & MOK (Machine Owner Key) Enrollment
+
+Both custom kernel variants (`-ryzen9` and `-t440p`) are cryptographically signed during the build pipeline (`CONFIG_MODULE_SIG=y`, `CONFIG_MODULE_SIG_ALL=y`, `CONFIG_SYSTEM_TRUSTED_KEYRING=y`). All compiled kernel modules (`.ko`) are signed with a private **Machine Owner Key (MOK)**, and the corresponding public certificate is embedded directly into the kernel's built-in trusted keyring (`CONFIG_SYSTEM_TRUSTED_KEYS="certs/MOK.pem"`).
+
+This ensures full compatibility with **UEFI Secure Boot**, preventing unsigned or tampered code from loading into kernel space while maintaining an unbroken chain of trust.
+
+### 🔑 MOK Key Artifacts Overview
+
+| File | Format | Purpose | Required for Compilation? | Enrolled in UEFI? |
+| :--- | :--- | :--- | :---: | :---: |
+| **`MOK.pem`** | PEM (ASCII) | Public certificate embedded in `vmlinuz` to verify signed modules. | **Yes** (injected from GitHub Secret `MOK_PEM`) | No |
+| **`MOK-signing.pem`** | PEM (ASCII) | Private key used by `scripts/sign-file` during `make bindeb-pkg`. | **Yes** (injected from GitHub Secret `MOK_SIGNING_PEM`) | No |
+| **`MOK.der`** | DER (Binary) | Public certificate in binary X.509 format for UEFI Shim / `mokutil`. | **No** | **Yes** (one-time enrollment) |
+| **`MOK.priv`** | PEM / Raw | Local master private key used to generate the signing key pair. | **No** (kept securely offline) | No |
+
+---
+
+### 🖥️ Step-by-Step: Enrolling the MOK Key in UEFI/BIOS with `mokutil`
+
+To boot the signed kernel on any target machine (Workstation AMD Ryzen 9 or Lenovo ThinkPad T440p) with **UEFI Secure Boot enabled**, you must enroll the public certificate `MOK.der` once in the system's Shim MOK database.
+
+#### Step 1: Copy `MOK.der` to the Target Machine
+Transfer the `MOK.der` binary certificate to the target workstation or laptop (e.g., via SCP, USB flash drive, or local network share).
+
+#### Step 2: Register the Key with `mokutil`
+Execute the enrollment request command with root privileges:
+
+```bash
+sudo mokutil --import /path/to/MOK.der
+```
+
+You will be prompted to enter and confirm a **one-time password** (e.g., `12345678`). This temporary password is only used once during the subsequent reboot to authorize the enrollment in firmware.
+
+#### Step 3: Reboot the System
+```bash
+sudo reboot
+```
+
+#### Step 4: Confirm Enrollment in the Shim UEFI Screen (*MOK Management*)
+When the machine reboots, the blue **Shim UEFI key management screen** will appear before GRUB:
+
+1. **Press any key** within 10 seconds to enter the MOK management menu.
+2. Select **`Enroll MOK`** and press `Enter`.
+3. Select **`View key 0`** (optional) to review the certificate details (Issuer, Fingerprint, Validity).
+4. Select **`Continue`**.
+5. When prompted *"Enroll the key(s)?"*, select **`Yes`**.
+6. **Enter the temporary password** you created in Step 2.
+7. Select **`Reboot`**.
+
+The machine will reboot normally into your signed custom Linux kernel.
+
+---
+
+### 🔍 Verification Commands
+
+After booting into Linux, you can verify that Secure Boot and the MOK key are active and functional:
+
+```bash
+# 1. Check Secure Boot status
+$ mokutil --sb-state
+SecureBoot enabled
+
+# 2. Verify that your MOK certificate is enrolled
+$ mokutil --test-key /path/to/MOK.der
+/path/to/MOK.der is already enrolled
+
+# 3. List all enrolled keys in the MOK database
+$ mokutil --list-enrolled | grep -E "(Issuer|Subject|Serial)"
+
+# 4. Check kernel dmesg for the loaded MOK certificate in the system keyring
+$ sudo dmesg | grep -Ei "certificate|keyring|asymmetric"
+[    0.912450] Loading compiled-in X.509 certificates
+[    0.913012] Loaded X.509 cert 'Custom MOK: ...'
+```
+
+---
+
 🖥️ Workstation Hardware Specs
 -----------
 
 ### 🐧 Kernel and Toolchain
 | Element             | Value               |
 | ------------------- | ------------------- |
-| Kernel              | 7.2.8-ryzen9        |
+| Kernel              | 6.19.14-ryzen9      |
 | Model               | SMP PREEMPT_DYNAMIC |
 | Base Distribution   | Debian 13           |
 | Compiler            | GCC 14.2.0          |
