@@ -11,7 +11,7 @@ on:
           - 'AMD Ryzen 9'
           - 'Lenovo Thinkpad T440p'
           - 'Both'
-        default: 'AMD Ryzen 9'
+        default: 'Both'
       tag:
         description: '🏷️ Git tag from torvalds/linux repo (used if no URL)'
         required: false
@@ -64,48 +64,6 @@ jobs:
           sudo apt install -y git build-essential gcc-14 g++-14 bc bison flex curl jq patch
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
-
-      - name: 🎯 Determine build targets matrix
-        id: matrix_config
-        shell: bash
-        run: |
-          TARGET="${{ inputs.target }}"
-          echo "Target chosen: $TARGET"
-
-          if [ -f "configs/stable/config-6.19.14-ryzen9-debian13-signed" ]; then
-            RYZEN_CONFIG="stable/config-6.19.14-ryzen9-debian13-signed"
-          elif [ -f "configs/stable/config-6.19.14-debian13-signed" ]; then
-            RYZEN_CONFIG="stable/config-6.19.14-debian13-signed"
-          else
-            RYZEN_CONFIG="stable/config-6.19.14-ryzen9-debian13-signed"
-          fi
-
-          LENOVO_CONFIG="stable/config-6.19.14-t440p-debian13-signed"
-
-          RYZEN_JSON="{\"id\":\"ryzen9\",\"name\":\"AMD Ryzen 9\",\"config_path\":\"$RYZEN_CONFIG\",\"arch_flags\":\"-march=znver3\",\"local_version\":\"-ryzen9\"}"
-          LENOVO_JSON="{\"id\":\"t440p\",\"name\":\"Lenovo Thinkpad T440p\",\"config_path\":\"$LENOVO_CONFIG\",\"arch_flags\":\"-march=haswell -mtune=haswell\",\"local_version\":\"-t440p\"}"
-
-          case "$TARGET" in
-            "AMD Ryzen 9")
-              MATRIX="[$RYZEN_JSON]"
-              ;;
-            "Lenovo Thinkpad T440p")
-              MATRIX="[$LENOVO_JSON]"
-              ;;
-            "Both")
-              MATRIX="[$RYZEN_JSON,$LENOVO_JSON]"
-              ;;
-            *)
-              echo "❌ Invalid target: $TARGET"
-              exit 1
-              ;;
-          esac
-
-          echo "targets_matrix=$MATRIX" >> "$GITHUB_OUTPUT"
-          echo "========================================="
-          echo "🎯 Target Option  : $TARGET"
-          echo "📦 Targets Matrix : $MATRIX"
-          echo "========================================="
 
       - name: 📥 Download kernel tarball
         if: ${{ inputs.url != '' || inputs.tag == '' }}
@@ -169,6 +127,60 @@ jobs:
           echo "kernel_tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "🏷️ Kernel source version: $TAG"
 
+      - name: 🎯 Determine build targets matrix
+        id: matrix_config
+        shell: bash
+        run: |
+          TARGET="${{ inputs.target }}"
+          TAG="${{ steps.kernel_source.outputs.kernel_tag }}"
+          echo "Target chosen : $TARGET"
+          echo "Kernel version: $TAG"
+
+          # Determine Ryzen config path
+          if [ -f "configs/stable/config-${TAG}-ryzen9-debian13-signed" ]; then
+            RYZEN_CONFIG="stable/config-${TAG}-ryzen9-debian13-signed"
+          elif [ -f "configs/stable/config-${TAG}-debian13-signed" ]; then
+            RYZEN_CONFIG="stable/config-${TAG}-debian13-signed"
+          elif [ -f "configs/stable/config-6.19.14-ryzen9-debian13-signed" ]; then
+            RYZEN_CONFIG="stable/config-6.19.14-ryzen9-debian13-signed"
+          else
+            RYZEN_CONFIG="stable/config-6.19.14-debian13-signed"
+          fi
+
+          # Determine Lenovo Thinkpad T440p config path
+          if [ -f "configs/stable/config-${TAG}-t440p-debian13-signed" ]; then
+            LENOVO_CONFIG="stable/config-${TAG}-t440p-debian13-signed"
+          elif [ -f "configs/stable/config-6.19.14-t440p-debian13-signed" ]; then
+            LENOVO_CONFIG="stable/config-6.19.14-t440p-debian13-signed"
+          else
+            LENOVO_CONFIG="stable/config-6.19.14-debian13-signed"
+          fi
+
+          RYZEN_JSON="{\"id\":\"ryzen9\",\"name\":\"AMD Ryzen 9\",\"config_path\":\"$RYZEN_CONFIG\",\"kcflags\":\"-march=znver3 -O2 -pipe\",\"kcppflags\":\"-march=znver3 -mtune=znver3\",\"arch_flags\":\"-march=znver3 -O2 -pipe\",\"local_version\":\"-ryzen9\"}"
+          LENOVO_JSON="{\"id\":\"t440p\",\"name\":\"Lenovo Thinkpad T440p\",\"config_path\":\"$LENOVO_CONFIG\",\"kcflags\":\"-march=haswell -mtune=haswell -O2 -pipe\",\"kcppflags\":\"-march=haswell -mtune=haswell\",\"arch_flags\":\"-march=haswell -mtune=haswell -O2 -pipe\",\"local_version\":\"-t440p\"}"
+
+          case "$TARGET" in
+            "AMD Ryzen 9")
+              MATRIX="[$RYZEN_JSON]"
+              ;;
+            "Lenovo Thinkpad T440p")
+              MATRIX="[$LENOVO_JSON]"
+              ;;
+            "Both")
+              MATRIX="[$RYZEN_JSON,$LENOVO_JSON]"
+              ;;
+            *)
+              echo "❌ Invalid target: $TARGET"
+              exit 1
+              ;;
+          esac
+
+          echo "targets_matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "========================================="
+          echo "🎯 Target Option  : $TARGET"
+          echo "📦 Targets Matrix : $MATRIX"
+          echo "========================================="
+
       - name: 📤 Upload prepared clean kernel source artifact
         uses: actions/upload-artifact@v7
         with:
@@ -207,7 +219,7 @@ jobs:
       - name: ⚙️ Install build dependencies
         run: |
           sudo apt install -y git build-essential gcc-14 g++-14 fakeroot bc bison flex libdw-dev libelf-dev libssl-dev zstd \
-            libncurses-dev dwarves debhelper rsync python3 ccache curl jq kmod
+            libncurses-dev dwarves debhelper rsync python3 ccache curl jq kmod lz4
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
@@ -246,6 +258,7 @@ jobs:
           echo "🔧 Applying configuration and running olddefconfig..."
           if ! make olddefconfig 2>&1 | tee ../build-config.log; then
             mkdir -p ../artifacts
+            cp ../build-config.log "../build-error-${{ matrix.target.id }}.log"
             cp ../build-config.log "../artifacts/build-error-${{ matrix.target.id }}.log"
             exit 1
           fi
@@ -282,18 +295,20 @@ jobs:
           KERNEL_VER=$(make kernelversion)
           CONFIG_INPUT="${{ matrix.target.config_path }}"
           LOCAL_VER="${{ matrix.target.local_version }}"
-          ARCH_FLAGS="${{ matrix.target.arch_flags }}"
+          KCFLAGS="${{ matrix.target.kcflags }}"
+          KCPPFLAGS="${{ matrix.target.kcppflags }}"
           TARGET="${{ matrix.target.name }}"
 
           echo "========================================="
-          echo "🐧 Environment Build"
+          echo "🐧 Environment Kernel Build"
           echo "========================================="
           echo "Target         : $TARGET"
           echo "Kernel version : $KERNEL_VER"
           echo "Local version  : $LOCAL_VER"
           echo "Package version: ${KERNEL_VER}${LOCAL_VER}"
           echo "Config         : $CONFIG_INPUT"
-          echo "Architecture   : $ARCH_FLAGS"
+          echo "KCFLAGS        : $KCFLAGS"
+          echo "KCPPFLAGS      : $KCPPFLAGS"
           echo "Build jobs     : $(nproc)"
           echo "GCC            : $(gcc --version | head -n1)"
           echo "G++            : $(g++ --version | head -n1)"
@@ -309,17 +324,20 @@ jobs:
           echo "🚀 Starting kernel compilation..."
 
           if make -j$(nproc) bindeb-pkg \
-              KCFLAGS="$ARCH_FLAGS" \
+              KCFLAGS="$KCFLAGS" \
+              KCPPFLAGS="$KCPPFLAGS" \
               LOCALVERSION="$LOCAL_VER" \
               KDEB_PKGVERSION="${KERNEL_VER}${LOCAL_VER}" \
               KDEB_CHANGELOG_DIST="trixie" \
               2>&1 | tee "$BUILD_LOG"
           then
+              cp "$BUILD_LOG" ../build-kernel.log 2>/dev/null || true
               echo "========================================="
               echo "✅ Kernel compilation completed successfully for $TARGET"
               echo "========================================="
           else
               BUILD_EXIT=${PIPESTATUS[0]}
+              cp "$BUILD_LOG" ../build-kernel.log 2>/dev/null || true
 
               echo "========================================="
               echo "❌ Kernel compilation FAILED for $TARGET"
@@ -418,27 +436,29 @@ jobs:
               flag && NF {print}
             ' "$CHANGES_FILE")
 
-            cat <<EOF > "artifacts/release-section-${{ matrix.target.id }}.md"
-          ### 🎯 Target: ${{ matrix.target.name }}
-          - **Version:** $VERSION  
-          - **Architecture:** $ARCH (${{ matrix.target.arch_flags }})  
-          - **Config:** \`${{ matrix.target.config_path }}\`  
-          - **Binary Packages:** $BINARIES  
-          - **Distribution:** $DIST | **Date:** $DATE  
-
-          #### 📝 Description:
-          $DESCRIPTION
-
-          #### ✅ Checksums-Sha256:
-          \`\`\`text
-          $SHA256
-          \`\`\`
-
-          #### 📦 Files:
-          \`\`\`text
-          $FILES
-          \`\`\`
-          EOF
+            {
+              echo "### 🎯 Target: ${{ matrix.target.name }}"
+              echo "- **Version:** $VERSION"
+              echo "- **Architecture:** $ARCH"
+              echo "- **KCFLAGS:** \`${{ matrix.target.kcflags }}\`"
+              echo "- **KCPPFLAGS:** \`${{ matrix.target.kcppflags }}\`"
+              echo "- **Config:** \`${{ matrix.target.config_path }}\`"
+              echo "- **Binary Packages:** $BINARIES"
+              echo "- **Distribution:** $DIST | **Date:** $DATE"
+              echo
+              echo "#### 📝 Description:"
+              echo "$DESCRIPTION"
+              echo
+              echo "#### ✅ Checksums-Sha256:"
+              echo '```text'
+              echo "$SHA256"
+              echo '```'
+              echo
+              echo "#### 📦 Files:"
+              echo '```text'
+              echo "$FILES"
+              echo '```'
+            } > "artifacts/release-section-${{ matrix.target.id }}.md"
           fi
 
           echo "========================================="
@@ -514,6 +534,7 @@ jobs:
             all-artifacts/*.deb
             all-artifacts/*.buildinfo
             all-artifacts/*.changes
+            all-artifacts/*.log
           overwrite_files: true
           generate_release_notes: false
         env:
@@ -543,6 +564,7 @@ jobs:
           KERNEL_TAG: ${{ needs.prepare.outputs.kernel_tag }}
           TARGET_CHOICE: ${{ needs.prepare.outputs.target_choice }}
           KERNEL_URL: ${{ inputs.url }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
@@ -552,26 +574,25 @@ jobs:
               DEB_LIST=" • Paquetes generados correctamente"
             fi
 
-            MESSAGE="<b>🐧 Linux Kernel Build ✅ Success</b>
-
-          🎯 <b>Objetivo(s):</b> ${TARGET_CHOICE}
-          🏷️ <b>Versión Base:</b> ${KERNEL_TAG:-Desconocida}
-          🚀 <b>Release:</b> <a href=\"https://github.com/${GITHUB_REPOSITORY}/releases/tag/kernel-${GITHUB_RUN_ID}\">kernel-${GITHUB_RUN_ID}</a>
-
-          📦 <b>Paquetes .deb generados:</b>
-          <code>${DEB_LIST}</code>
-
-          🏷️ <b>Workflow:</b>
-          🔗 <a href=\"${RUN_URL}\">Link to GitHub</a>"
+            MESSAGE=$(printf "%s\n" \
+              "<b>🐧 Linux Kernel Build ✅ Success</b>" \
+              "" \
+              "🎯 <b>Objetivo(s):</b> ${TARGET_CHOICE}" \
+              "🏷️ <b>Versión Base:</b> ${KERNEL_TAG:-Desconocida}" \
+              "🚀 <b>Release:</b> <a href=\"https://github.com/${GITHUB_REPOSITORY}/releases/tag/kernel-${RUN_NUMBER}\">kernel-${RUN_NUMBER}</a>" \
+              "" \
+              "📦 <b>Paquetes .deb generados:</b>" \
+              "<code>${DEB_LIST}</code>" \
+              "" \
+              "🏷️ <b>Workflow:</b>" \
+              "🔗 <a href=\"${RUN_URL}\">Link to GitHub</a>")
 
           else
             ERROR_SNIPPET=""
             for err_file in artifacts/build-error-*.log; do
               if [ -f "$err_file" ]; then
                 SNIP=$(tail -n 30 "$err_file" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-                ERROR_SNIPPET="${ERROR_SNIPPET}
-          <b>[$(basename "$err_file")]:</b>
-          <pre>${SNIP}</pre>"
+                ERROR_SNIPPET=$(printf "%b\n<b>[%s]:</b>\n<pre>%s</pre>" "$ERROR_SNIPPET" "$(basename "$err_file")" "$SNIP")
               fi
             done
 
@@ -579,9 +600,7 @@ jobs:
               for log_file in artifacts/build-*.log; do
                 if [ -f "$log_file" ]; then
                   SNIP=$(tail -n 30 "$log_file" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-                  ERROR_SNIPPET="${ERROR_SNIPPET}
-          <b>[$(basename "$log_file")]:</b>
-          <pre>${SNIP}</pre>"
+                  ERROR_SNIPPET=$(printf "%b\n<b>[%s]:</b>\n<pre>%s</pre>" "$ERROR_SNIPPET" "$(basename "$log_file")" "$SNIP")
                 fi
               done
             fi
@@ -595,17 +614,18 @@ jobs:
               SRC_INFO="${KERNEL_URL:-$DEFAULT_URL}"
             fi
 
-            MESSAGE="<b>🐧 Linux Kernel Build ❌ Fallido (Build: ${BUILD_STATUS^}, Release: ${RELEASE_STATUS^})</b>
-
-          ⚠️ <b>Parámetros de la ejecución:</b>
-          • <b>Objetivo(s):</b> ${TARGET_CHOICE}
-          • <b>Origen:</b> ${SRC_INFO}
-
-          📋 <b>Diagnóstico del error:</b>
-          ${ERROR_SNIPPET}
-
-          🏷️ <b>Workflow:</b>
-          🔗 <a href=\"${RUN_URL}\">Ver logs completos en GitHub Actions</a>"
+            MESSAGE=$(printf "%s\n" \
+              "<b>🐧 Linux Kernel Build ❌ Fallido (Build: ${BUILD_STATUS^}, Release: ${RELEASE_STATUS^})</b>" \
+              "" \
+              "⚠️ <b>Parámetros de la ejecución:</b>" \
+              "• <b>Objetivo(s):</b> ${TARGET_CHOICE}" \
+              "• <b>Origen:</b> ${SRC_INFO}" \
+              "" \
+              "📋 <b>Diagnóstico del error:</b>" \
+              "${ERROR_SNIPPET}" \
+              "" \
+              "🏷️ <b>Workflow:</b>" \
+              "🔗 <a href=\"${RUN_URL}\">Ver logs completos en GitHub Actions</a>")
           fi
 
           curl -s -X POST \
