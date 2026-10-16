@@ -2117,7 +2117,7 @@ CONFIG_NSM=m
 # CONFIG_CB710_CORE is not set
 # CONFIG_SENSORS_LIS3_I2C is not set
 # CONFIG_ALTERA_STAPL is not set
-# CONFIG_INTEL_MEI is not set
+CONFIG_INTEL_MEI=y
 # CONFIG_VMWARE_VMCI is not set
 # CONFIG_GENWQE is not set
 # CONFIG_BCM_VK is not set
