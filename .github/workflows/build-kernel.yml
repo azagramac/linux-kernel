@@ -12,14 +12,32 @@ on:
           - 'Lenovo Thinkpad T440p'
           - 'Both'
         default: 'Both'
-      tag:
-        description: '🏷️ Git tag from torvalds/linux repo (used if no URL)'
+      config:
+        description: '📄 Kernel configuration file'
+        required: true
+        type: choice
+        options:
+          - 'configs/stable/config-7.3-ryzen9-debian13-signed'
+          - 'configs/stable/config-7.3-t440p-debian13-signed'
+          - 'configs/stable/config-6.19.14-ryzen9-debian13-signed'
+          - 'configs/stable/config-6.19.14-t440p-debian13-signed'
+          - 'configs/stable/config-6.19.14-debian13'
+          - 'configs/testing/config-7.2.9-debian13'
+          - 'configs/testing/config-7.2.8-debian13'
+          - 'custom'
+        default: 'configs/stable/config-7.3-ryzen9-debian13-signed'
+      custom_config:
+        description: '⚙️ Custom config path (used if config is "custom")'
         required: false
         default: ''
       url:
-        description: '📦 Kernel tarball URL from kernel.org (.tar.gz or .tar.xz)'
+        description: '📦 Kernel tarball URL (optional override; default: auto-downloaded from kernel.org)'
         required: false
-        default: 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz'
+        default: ''
+      tag:
+        description: '🏷️ Git tag from torvalds/linux repo (optional override, used if no URL and specified)'
+        required: false
+        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -30,9 +48,10 @@ permissions:
 
 env:
   NODE_OPTIONS: "--no-deprecation"
-  DEFAULT_URL: 'https://www.kernel.org/pub/linux/kernel/v6.x/linux-6.19.14.tar.gz'
-  RAW_BASE_URL: 'https://raw.githubusercontent.com/azagramac/linux-kernel/refs/heads/master/'
+  DEFAULT_URL: 'https://www.kernel.org/pub/linux/kernel/v7.x/linux-7.3.tar.gz'
+  RAW_BASE_URL: "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/"
   KERNEL_TARGET: ${{ inputs.target }}
+  KERNEL_CONFIG: ${{ inputs.config }}
   KERNEL_URL: ${{ inputs.url }}
   KERNEL_TAG: ${{ inputs.tag }}
 
@@ -47,6 +66,8 @@ jobs:
       kernel_tag: ${{ steps.kernel_source.outputs.kernel_tag }}
       targets_matrix: ${{ steps.matrix_config.outputs.targets_matrix }}
       target_choice: ${{ inputs.target }}
+      config_choice: ${{ steps.matrix_config.outputs.config_choice }}
+      download_url: ${{ steps.matrix_config.outputs.kernel_url }}
 
     steps:
       - name: 🛠️ Prepare container base tools
@@ -65,95 +86,79 @@ jobs:
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
-      - name: 📥 Download kernel tarball
-        if: ${{ inputs.url != '' || inputs.tag == '' }}
-        id: download_tarball
-        shell: bash
-        run: |
-          URL="${KERNEL_URL:-$DEFAULT_URL}"
-          FILENAME=$(basename "$URL")
-
-          case "$FILENAME" in
-            *.tar.gz)
-              EXT="gz"
-              ;;
-            *.tar.xz)
-              EXT="xz"
-              ;;
-            *)
-              echo "❌ Only .tar.gz or .tar.xz URLs are allowed"
-              echo "URL: $URL"
-              exit 1
-              ;;
-          esac
-
-          echo "⬇️ Downloading kernel package..."
-          curl -fL --retry 3 --retry-all-errors \
-            -o "kernel_package.tar.${EXT}" \
-            "$URL"
-
-          mkdir -p kernel_build
-          tar -xf "kernel_package.tar.${EXT}" \
-            -C kernel_build \
-            --strip-components=1
-
-      - name: 📥 Clone torvalds/linux repo
-        if: ${{ inputs.url == '' && inputs.tag != '' }}
-        id: clone_repo
-        run: |
-          git clone --depth 1 --branch "$KERNEL_TAG" \
-            https://github.com/torvalds/linux \
-            kernel_build
-
-      - name: 🔍 Verify kernel source
-        run: |
-          if [ ! -f kernel_build/Makefile ]; then
-            echo "❌ No valid kernel source available!"
-            echo "Provide either a valid kernel tarball URL or a valid Linux kernel tag."
-            exit 1
-          fi
-          echo "✅ Kernel source verified"
-
-      - name: 🏷️ Determine kernel source version
-        id: kernel_source
-        working-directory: kernel_build
-        run: |
-          if [ -n "${KERNEL_TAG}" ]; then
-            TAG="${KERNEL_TAG}"
-          else
-            TAG=$(make kernelversion)
-          fi
-
-          echo "kernel_tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "🏷️ Kernel source version: $TAG"
-
-      - name: 🎯 Determine build targets matrix
+      - name: 🎯 Determine build targets matrix & source
         id: matrix_config
         shell: bash
         run: |
           TARGET="${{ inputs.target }}"
-          TAG="${{ steps.kernel_source.outputs.kernel_tag }}"
-          echo "Target chosen : $TARGET"
-          echo "Kernel version: $TAG"
+          SELECTED_CONFIG="${{ inputs.config }}"
+          CUSTOM_CONFIG="${{ inputs.custom_config }}"
+          INPUT_URL="${{ inputs.url }}"
+          INPUT_TAG="${{ inputs.tag }}"
+
+          if [ "$SELECTED_CONFIG" = "custom" ] && [ -n "$CUSTOM_CONFIG" ]; then
+            SELECTED_CONFIG="$CUSTOM_CONFIG"
+          fi
+
+          # Extract version from config name (e.g. config-7.3-ryzen9-... -> 7.3)
+          VERSION=$(basename "$SELECTED_CONFIG" | sed -nE 's/.*config-([0-9]+(\.[0-9]+)+).*/\1/p')
+
+          # Fallback: check inside config file header if present
+          if [ -z "$VERSION" ] && [ -f "$SELECTED_CONFIG" ]; then
+            VERSION=$(grep -m1 -E '^[# ]*Linux/x86 [0-9]' "$SELECTED_CONFIG" | awk '{print $3}' | sed 's/\.0$//')
+          elif [ -z "$VERSION" ] && [ -f "configs/$SELECTED_CONFIG" ]; then
+            VERSION=$(grep -m1 -E '^[# ]*Linux/x86 [0-9]' "configs/$SELECTED_CONFIG" | awk '{print $3}' | sed 's/\.0$//')
+          fi
+
+          if [ -z "$VERSION" ]; then
+            VERSION="7.3"
+          fi
+
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
 
           # Determine Ryzen config path
-          if [ -f "configs/stable/config-${TAG}-ryzen9-debian13-signed" ]; then
-            RYZEN_CONFIG="stable/config-${TAG}-ryzen9-debian13-signed"
-          elif [ -f "configs/stable/config-${TAG}-debian13-signed" ]; then
-            RYZEN_CONFIG="stable/config-${TAG}-debian13-signed"
-          elif [ -f "configs/stable/config-6.19.14-ryzen9-debian13-signed" ]; then
-            RYZEN_CONFIG="stable/config-6.19.14-ryzen9-debian13-signed"
+          if echo "$SELECTED_CONFIG" | grep -qi "ryzen"; then
+            RYZEN_CONFIG="$SELECTED_CONFIG"
+          elif [ -f "configs/stable/config-${VERSION}-ryzen9-debian13-signed" ]; then
+            RYZEN_CONFIG="configs/stable/config-${VERSION}-ryzen9-debian13-signed"
+          elif [ -f "configs/stable/config-${VERSION}-debian13-signed" ]; then
+            RYZEN_CONFIG="configs/stable/config-${VERSION}-debian13-signed"
+          elif [ -f "configs/stable/config-${VERSION}-debian13" ]; then
+            RYZEN_CONFIG="configs/stable/config-${VERSION}-debian13"
+          elif [ -f "$SELECTED_CONFIG" ]; then
+            RYZEN_CONFIG="$SELECTED_CONFIG"
+          elif [ -f "configs/$SELECTED_CONFIG" ]; then
+            RYZEN_CONFIG="configs/$SELECTED_CONFIG"
+          elif [ -f "configs/stable/config-7.3-ryzen9-debian13-signed" ]; then
+            RYZEN_CONFIG="configs/stable/config-7.3-ryzen9-debian13-signed"
           else
-            RYZEN_CONFIG="stable/config-6.19.14-debian13-signed"
+            RYZEN_CONFIG="$SELECTED_CONFIG"
           fi
 
           # Determine Lenovo Thinkpad T440p config path
-          if [ -f "configs/stable/config-${TAG}-t440p-debian13-signed" ]; then
-            LENOVO_CONFIG="stable/config-${TAG}-t440p-debian13-signed"
-          elif [ -f "configs/stable/config-6.19.14-t440p-debian13-signed" ]; then
-            LENOVO_CONFIG="stable/config-6.19.14-t440p-debian13-signed"
+          if echo "$SELECTED_CONFIG" | grep -qi "t440p"; then
+            LENOVO_CONFIG="$SELECTED_CONFIG"
+          elif [ -f "configs/stable/config-${VERSION}-t440p-debian13-signed" ]; then
+            LENOVO_CONFIG="configs/stable/config-${VERSION}-t440p-debian13-signed"
+          elif [ -f "configs/stable/config-${VERSION}-debian13-signed" ]; then
+            LENOVO_CONFIG="configs/stable/config-${VERSION}-debian13-signed"
+          elif [ -f "configs/stable/config-${VERSION}-debian13" ]; then
+            LENOVO_CONFIG="configs/stable/config-${VERSION}-debian13"
+          elif [ -f "$SELECTED_CONFIG" ]; then
+            LENOVO_CONFIG="$SELECTED_CONFIG"
+          elif [ -f "configs/$SELECTED_CONFIG" ]; then
+            LENOVO_CONFIG="configs/$SELECTED_CONFIG"
+          elif [ -f "configs/stable/config-7.3-t440p-debian13-signed" ]; then
+            LENOVO_CONFIG="configs/stable/config-7.3-t440p-debian13-signed"
           else
-            LENOVO_CONFIG="stable/config-6.19.14-debian13-signed"
+            LENOVO_CONFIG="$SELECTED_CONFIG"
+          fi
+
+          # If target is specific device, prioritize selected config if compatible
+          if [ "$TARGET" = "AMD Ryzen 9" ] && ! echo "$SELECTED_CONFIG" | grep -qi "t440p"; then
+            RYZEN_CONFIG="$SELECTED_CONFIG"
+          elif [ "$TARGET" = "Lenovo Thinkpad T440p" ] && ! echo "$SELECTED_CONFIG" | grep -qi "ryzen"; then
+            LENOVO_CONFIG="$SELECTED_CONFIG"
           fi
 
           RYZEN_JSON="{\"id\":\"ryzen9\",\"name\":\"AMD Ryzen 9\",\"config_path\":\"$RYZEN_CONFIG\",\"kcflags\":\"-march=znver3 -O2 -pipe\",\"kcppflags\":\"-march=znver3 -mtune=znver3\",\"arch_flags\":\"-march=znver3 -O2 -pipe\",\"local_version\":\"-ryzen9\"}"
@@ -175,11 +180,109 @@ jobs:
               ;;
           esac
 
+          # Determine download source & URL
+          if [ -n "$INPUT_URL" ]; then
+            DOWNLOAD_URL="$INPUT_URL"
+            DOWNLOAD_METHOD="url"
+          elif [ -n "$INPUT_TAG" ]; then
+            DOWNLOAD_METHOD="tag"
+            GIT_TAG="$INPUT_TAG"
+            DOWNLOAD_URL=""
+          else
+            DOWNLOAD_URL="https://www.kernel.org/pub/linux/kernel/v${MAJOR}.x/linux-${VERSION}.tar.gz"
+            DOWNLOAD_METHOD="url"
+          fi
+
           echo "targets_matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "download_method=$DOWNLOAD_METHOD" >> "$GITHUB_OUTPUT"
+          echo "kernel_url=$DOWNLOAD_URL" >> "$GITHUB_OUTPUT"
+          echo "git_tag=$GIT_TAG" >> "$GITHUB_OUTPUT"
+          echo "config_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "config_choice=$SELECTED_CONFIG" >> "$GITHUB_OUTPUT"
+
           echo "========================================="
-          echo "🎯 Target Option  : $TARGET"
-          echo "📦 Targets Matrix : $MATRIX"
+          echo "🎯 Target Option      : $TARGET"
+          echo "📄 Config Selected    : $SELECTED_CONFIG"
+          echo "🏷️ Kernel Version     : $VERSION (Major: $MAJOR)"
+          echo "⬇️ Download Method    : $DOWNLOAD_METHOD"
+          if [ "$DOWNLOAD_METHOD" = "url" ]; then
+            echo "📦 Kernel URL         : $DOWNLOAD_URL"
+          else
+            echo "🏷️ Git Tag            : $GIT_TAG"
+          fi
+          echo "AMD Ryzen 9 config    : $RYZEN_CONFIG"
+          echo "Lenovo T440p config   : $LENOVO_CONFIG"
+          echo "📦 Targets Matrix     : $MATRIX"
           echo "========================================="
+
+      - name: 📥 Download kernel tarball
+        if: steps.matrix_config.outputs.download_method == 'url'
+        id: download_tarball
+        shell: bash
+        run: |
+          URL="${{ steps.matrix_config.outputs.kernel_url }}"
+          echo "⬇️ Downloading kernel package from $URL..."
+
+          FILENAME=$(basename "$URL")
+          case "$FILENAME" in
+            *.tar.gz)
+              EXT="gz"
+              ;;
+            *.tar.xz)
+              EXT="xz"
+              ;;
+            *)
+              echo "❌ Only .tar.gz or .tar.xz URLs are allowed: $URL"
+              exit 1
+              ;;
+          esac
+
+          if ! curl -fL --retry 3 --retry-all-errors -o "kernel_package.tar.${EXT}" "$URL"; then
+            if [ "$EXT" = "gz" ]; then
+              FALLBACK_URL="${URL%.tar.gz}.tar.xz"
+              echo "⚠️ .tar.gz failed, attempting fallback: $FALLBACK_URL"
+              curl -fL --retry 3 --retry-all-errors -o "kernel_package.tar.xz" "$FALLBACK_URL"
+              EXT="xz"
+            else
+              echo "❌ Failed to download kernel package from $URL"
+              exit 1
+            fi
+          fi
+
+          mkdir -p kernel_build
+          tar -xf "kernel_package.tar.${EXT}" \
+            -C kernel_build \
+            --strip-components=1
+
+      - name: 📥 Clone torvalds/linux repo
+        if: steps.matrix_config.outputs.download_method == 'tag'
+        id: clone_repo
+        run: |
+          git clone --depth 1 --branch "${{ steps.matrix_config.outputs.git_tag }}" \
+            https://github.com/torvalds/linux \
+            kernel_build
+
+      - name: 🔍 Verify kernel source
+        run: |
+          if [ ! -f kernel_build/Makefile ]; then
+            echo "❌ No valid kernel source available!"
+            echo "Provide either a valid kernel tarball URL or a valid Linux kernel tag."
+            exit 1
+          fi
+          echo "✅ Kernel source verified"
+
+      - name: 🏷️ Determine kernel source version
+        id: kernel_source
+        working-directory: kernel_build
+        run: |
+          if [ -n "${{ steps.matrix_config.outputs.git_tag }}" ]; then
+            TAG="${{ steps.matrix_config.outputs.git_tag }}"
+          else
+            TAG=$(make kernelversion)
+          fi
+
+          echo "kernel_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "🏷️ Kernel source version: $TAG"
 
       - name: 📤 Upload prepared clean kernel source artifact
         uses: actions/upload-artifact@v7
@@ -240,11 +343,19 @@ jobs:
           CONFIG_INPUT="${{ matrix.target.config_path }}"
           echo "Applying config: $CONFIG_INPUT for ${{ matrix.target.name }}"
 
-          if [ -f "configs/${CONFIG_INPUT}" ]; then
-            echo "📋 Using local config configs/${CONFIG_INPUT}..."
-            cp "configs/${CONFIG_INPUT}" kernel_build/.config
+          CONFIG_FILE=""
+          if [ -f "$CONFIG_INPUT" ]; then
+            CONFIG_FILE="$CONFIG_INPUT"
+          elif [ -f "configs/$CONFIG_INPUT" ]; then
+            CONFIG_FILE="configs/$CONFIG_INPUT"
+          fi
+
+          if [ -n "$CONFIG_FILE" ]; then
+            echo "📋 Using local config $CONFIG_FILE..."
+            cp "$CONFIG_FILE" kernel_build/.config
           else
-            CONFIG_URL="${RAW_BASE_URL}configs/${CONFIG_INPUT}"
+            CLEAN_CONFIG="${CONFIG_INPUT#configs/}"
+            CONFIG_URL="${RAW_BASE_URL}configs/${CLEAN_CONFIG}"
             echo "⬇️ Downloading config from $CONFIG_URL..."
             curl -fL --retry 3 --retry-all-errors \
               -o kernel_build/.config \
@@ -503,6 +614,7 @@ jobs:
             echo "## 🐧 Linux Kernel Release (${{ needs.prepare.outputs.kernel_tag }})"
             echo
             echo "**Target Selection:** ${{ needs.prepare.outputs.target_choice }}"
+            echo "**Config Selection:** \`${{ needs.prepare.outputs.config_choice }}\`"
             echo
             echo "---"
             echo
@@ -563,7 +675,8 @@ jobs:
           RELEASE_STATUS: ${{ needs.release.result }}
           KERNEL_TAG: ${{ needs.prepare.outputs.kernel_tag }}
           TARGET_CHOICE: ${{ needs.prepare.outputs.target_choice }}
-          KERNEL_URL: ${{ inputs.url }}
+          CONFIG_CHOICE: ${{ needs.prepare.outputs.config_choice }}
+          KERNEL_URL: ${{ needs.prepare.outputs.download_url }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -578,6 +691,7 @@ jobs:
               "<b>🐧 Linux Kernel Build ✅ Success</b>" \
               "" \
               "🎯 <b>Objetivo(s):</b> ${TARGET_CHOICE}" \
+              "📄 <b>Config:</b> ${CONFIG_CHOICE}" \
               "🏷️ <b>Versión Base:</b> ${KERNEL_TAG:-Desconocida}" \
               "🚀 <b>Release:</b> <a href=\"https://github.com/${GITHUB_REPOSITORY}/releases/tag/kernel-${RUN_NUMBER}\">kernel-${RUN_NUMBER}</a>" \
               "" \
@@ -619,6 +733,7 @@ jobs:
               "" \
               "⚠️ <b>Parámetros de la ejecución:</b>" \
               "• <b>Objetivo(s):</b> ${TARGET_CHOICE}" \
+              "• <b>Config:</b> ${CONFIG_CHOICE}" \
               "• <b>Origen:</b> ${SRC_INFO}" \
               "" \
               "📋 <b>Diagnóstico del error:</b>" \
