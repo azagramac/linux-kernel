@@ -374,22 +374,19 @@ jobs:
             exit 1
           fi
 
-      - name: 🔑 Inject MOK certificates from secrets
+      - name: 🔑 Inject MOK signing key from secrets
         working-directory: kernel_build
         env:
-          MOK_PEM: ${{ secrets.MOK_PEM }}
           MOK_SIGNING_PEM: ${{ secrets.MOK_SIGNING_PEM }}
         run: |
           mkdir -p certs
-          if [ -n "$MOK_SIGNING_PEM" ] && [ -n "$MOK_PEM" ]; then
-            echo "🔑 Installing MOK certificates..."
+          if [ -n "$MOK_SIGNING_PEM" ]; then
+            echo "🔑 Installing MOK signing key..."
             echo "$MOK_SIGNING_PEM" > certs/MOK-signing.pem
-            echo "$MOK_PEM" > certs/MOK.pem
             chmod 600 certs/MOK-signing.pem
-            chmod 644 certs/MOK.pem
-            echo "✅ MOK certificates installed into certs/"
+            echo "✅ MOK signing key installed into certs/"
           else
-            echo "⚠️ Warning: MOK secrets are empty or not configured"
+            echo "⚠️ Warning: MOK_SIGNING_PEM secret is empty or not configured"
           fi
 
       - name: 🐧 Build kernel
@@ -481,7 +478,7 @@ jobs:
       - name: 🔒 Securely remove MOK signing key
         if: always()
         run: |
-          rm -f kernel_build/certs/MOK-signing.pem kernel_build/certs/MOK.pem
+          rm -f kernel_build/certs/MOK-signing.pem
 
       - name: 📦 Move .deb, logs & prepare release notes snippet
         if: always()
