@@ -4,7 +4,7 @@
 The Linux kernel is the core of any Linux operating system. It manages hardware,
 system resources, and provides the fundamental services for all other software.
 
------------
+---
 
 [![Linux Kernel](https://img.shields.io/badge/dynamic/json?label=Linux%20Kernel&query=latest_stable.version&url=https%3A%2F%2Fwww.kernel.org%2Freleases.json&color=FFD133)](https://kernel.org/)
 [![Custom Kernel](https://img.shields.io/github/v/release/azagramac/linux-kernel?label=Custom%20Kernel&color=ffcc33&display_name=release)](https://github.com/azagramac/linux-kernel/releases)
@@ -18,7 +18,17 @@ system resources, and provides the fundamental services for all other software.
 
 ## Last build
 
-<img width="972" height="533" alt="terminal" src="https://github.com/user-attachments/assets/e52cbb40-3ae0-47d2-9d1f-056812e88d77" />
+<p align="center">
+  <img width="968" alt="terminal-ryzen" src="https://github.com/user-attachments/assets/763d444f-0ffe-4823-ad42-348c2b0ec529" />
+  <br />
+  <sub>Build for AMD Ryzen 9 5950X.</sub>
+</p>
+
+<p align="center">
+  <img width="968" alt="terminal-t440p" src="https://github.com/user-attachments/assets/569470ca-4dc2-46ae-8f52-b7a2d399823d" />
+  <br />
+  <sub>Build for Lenovo ThinkPad T440p.</sub>
+</p>
 
 ---
 
@@ -453,7 +463,7 @@ This allows the packaged kernel to be verified independently of the source-tree 
 
 ## 🔏 16. Secure Boot & MOK (Machine Owner Key) Enrollment
 
-Both custom kernel variants (`-ryzen9` and `-t440p`) are cryptographically signed during the build pipeline (`CONFIG_MODULE_SIG=y`, `CONFIG_MODULE_SIG_ALL=y`, `CONFIG_SYSTEM_TRUSTED_KEYRING=y`). All compiled kernel modules (`.ko`) are signed with a private **Machine Owner Key (MOK)**, and the corresponding public certificate is embedded directly into the kernel's built-in trusted keyring (`CONFIG_SYSTEM_TRUSTED_KEYS="certs/MOK.pem"`).
+Both custom kernel variants (`-ryzen9` and `-t440p`) are cryptographically signed during the build pipeline (`CONFIG_MODULE_SIG=y`, `CONFIG_MODULE_SIG_ALL=y`, `CONFIG_SYSTEM_TRUSTED_KEYRING=y`). All compiled kernel modules (`.ko`) are signed with a private **Machine Owner Key (MOK)**.
 
 This ensures full compatibility with **UEFI Secure Boot**, preventing unsigned or tampered code from loading into kernel space while maintaining an unbroken chain of trust.
 
@@ -461,7 +471,7 @@ This ensures full compatibility with **UEFI Secure Boot**, preventing unsigned o
 
 | File | Format | Purpose | Required for Compilation? | Enrolled in UEFI? |
 | :--- | :--- | :--- | :---: | :---: |
-| **`MOK.pem`** | PEM (ASCII) | Public certificate embedded in `vmlinuz` to verify signed modules. | **Yes** (injected from GitHub Secret `MOK_PEM`) | No |
+| **`MOK.pem`** | PEM (ASCII) | Public certificate corresponding to the MOK signing key. | **No** | No |
 | **`MOK-signing.pem`** | PEM (ASCII) | Private key used by `scripts/sign-file` during `make bindeb-pkg`. | **Yes** (injected from GitHub Secret `MOK_SIGNING_PEM`) | No |
 | **`MOK.der`** | DER (Binary) | Public certificate in binary X.509 format for UEFI Shim / `mokutil`. | **No** | **Yes** (one-time enrollment) |
 | **`MOK.priv`** | PEM / Raw | Local master private key used to generate the signing key pair. | **No** (kept securely offline) | No |
