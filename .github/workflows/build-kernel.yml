@@ -17,15 +17,16 @@ on:
         required: true
         type: choice
         options:
+          - 'stable'
           - 'configs/stable/config-7.3-ryzen9-debian13-signed'
           - 'configs/stable/config-7.3-t440p-debian13-signed'
-          - 'configs/stable/config-6.19.14-ryzen9-debian13-signed'
-          - 'configs/stable/config-6.19.14-t440p-debian13-signed'
-          - 'configs/stable/config-6.19.14-debian13'
+          - 'configs/archived/config-6.19.14-ryzen9-debian13-signed'
+          - 'configs/archived/config-6.19.14-t440p-debian13-signed'
+          - 'configs/testing/config-6.19.14-debian13'
           - 'configs/testing/config-7.2.9-debian13'
           - 'configs/testing/config-7.2.8-debian13'
           - 'custom'
-        default: 'configs/stable/config-7.3-ryzen9-debian13-signed'
+        default: 'stable'
       custom_config:
         description: '⚙️ Custom config path (used if config is "custom")'
         required: false
@@ -67,6 +68,8 @@ jobs:
       targets_matrix: ${{ steps.matrix_config.outputs.targets_matrix }}
       target_choice: ${{ inputs.target }}
       config_choice: ${{ steps.matrix_config.outputs.config_choice }}
+      ryzen_config: ${{ steps.matrix_config.outputs.ryzen_config }}
+      lenovo_config: ${{ steps.matrix_config.outputs.lenovo_config }}
       download_url: ${{ steps.matrix_config.outputs.kernel_url }}
 
     steps:
@@ -100,8 +103,16 @@ jobs:
             SELECTED_CONFIG="$CUSTOM_CONFIG"
           fi
 
-          # Extract version from config name (e.g. config-7.3-ryzen9-... -> 7.3)
-          VERSION=$(basename "$SELECTED_CONFIG" | sed -nE 's/.*config-([0-9]+(\.[0-9]+)+).*/\1/p')
+          # Determine dynamic stable defaults (active configs currently in configs/stable/)
+          STABLE_RYZEN=$(find configs/stable -maxdepth 1 -name "*ryzen*" 2>/dev/null | head -n1)
+          STABLE_LENOVO=$(find configs/stable -maxdepth 1 -name "*t440p*" 2>/dev/null | head -n1)
+
+          if [ "$SELECTED_CONFIG" = "stable" ] || [ -z "$SELECTED_CONFIG" ]; then
+            VERSION=$(basename "$STABLE_RYZEN" | sed -nE 's/.*config-([0-9]+(\.[0-9]+)+).*/\1/p')
+          else
+            # Extract version from config name (e.g. config-7.3-ryzen9-... -> 7.3)
+            VERSION=$(basename "$SELECTED_CONFIG" | sed -nE 's/.*config-([0-9]+(\.[0-9]+)+).*/\1/p')
+          fi
 
           # Fallback: check inside config file header if present
           if [ -z "$VERSION" ] && [ -f "$SELECTED_CONFIG" ]; then
@@ -117,48 +128,68 @@ jobs:
           MAJOR=$(echo "$VERSION" | cut -d. -f1)
 
           # Determine Ryzen config path
-          if echo "$SELECTED_CONFIG" | grep -qi "ryzen"; then
+          if [ "$SELECTED_CONFIG" = "stable" ]; then
+            RYZEN_CONFIG="$STABLE_RYZEN"
+          elif echo "$SELECTED_CONFIG" | grep -qi "ryzen"; then
             RYZEN_CONFIG="$SELECTED_CONFIG"
           elif [ -f "configs/stable/config-${VERSION}-ryzen9-debian13-signed" ]; then
             RYZEN_CONFIG="configs/stable/config-${VERSION}-ryzen9-debian13-signed"
+          elif [ -f "configs/archived/config-${VERSION}-ryzen9-debian13-signed" ]; then
+            RYZEN_CONFIG="configs/archived/config-${VERSION}-ryzen9-debian13-signed"
           elif [ -f "configs/stable/config-${VERSION}-debian13-signed" ]; then
             RYZEN_CONFIG="configs/stable/config-${VERSION}-debian13-signed"
+          elif [ -f "configs/archived/config-${VERSION}-debian13-signed" ]; then
+            RYZEN_CONFIG="configs/archived/config-${VERSION}-debian13-signed"
           elif [ -f "configs/stable/config-${VERSION}-debian13" ]; then
             RYZEN_CONFIG="configs/stable/config-${VERSION}-debian13"
           elif [ -f "$SELECTED_CONFIG" ]; then
             RYZEN_CONFIG="$SELECTED_CONFIG"
           elif [ -f "configs/$SELECTED_CONFIG" ]; then
             RYZEN_CONFIG="configs/$SELECTED_CONFIG"
-          elif [ -f "configs/stable/config-7.3-ryzen9-debian13-signed" ]; then
-            RYZEN_CONFIG="configs/stable/config-7.3-ryzen9-debian13-signed"
+          elif [ -n "$STABLE_RYZEN" ] && [ -f "$STABLE_RYZEN" ]; then
+            RYZEN_CONFIG="$STABLE_RYZEN"
           else
             RYZEN_CONFIG="$SELECTED_CONFIG"
           fi
 
           # Determine Lenovo Thinkpad T440p config path
-          if echo "$SELECTED_CONFIG" | grep -qi "t440p"; then
+          if [ "$SELECTED_CONFIG" = "stable" ]; then
+            LENOVO_CONFIG="$STABLE_LENOVO"
+          elif echo "$SELECTED_CONFIG" | grep -qi "t440p"; then
             LENOVO_CONFIG="$SELECTED_CONFIG"
           elif [ -f "configs/stable/config-${VERSION}-t440p-debian13-signed" ]; then
             LENOVO_CONFIG="configs/stable/config-${VERSION}-t440p-debian13-signed"
+          elif [ -f "configs/archived/config-${VERSION}-t440p-debian13-signed" ]; then
+            LENOVO_CONFIG="configs/archived/config-${VERSION}-t440p-debian13-signed"
           elif [ -f "configs/stable/config-${VERSION}-debian13-signed" ]; then
             LENOVO_CONFIG="configs/stable/config-${VERSION}-debian13-signed"
+          elif [ -f "configs/archived/config-${VERSION}-debian13-signed" ]; then
+            LENOVO_CONFIG="configs/archived/config-${VERSION}-debian13-signed"
           elif [ -f "configs/stable/config-${VERSION}-debian13" ]; then
             LENOVO_CONFIG="configs/stable/config-${VERSION}-debian13"
           elif [ -f "$SELECTED_CONFIG" ]; then
             LENOVO_CONFIG="$SELECTED_CONFIG"
           elif [ -f "configs/$SELECTED_CONFIG" ]; then
             LENOVO_CONFIG="configs/$SELECTED_CONFIG"
-          elif [ -f "configs/stable/config-7.3-t440p-debian13-signed" ]; then
-            LENOVO_CONFIG="configs/stable/config-7.3-t440p-debian13-signed"
+          elif [ -n "$STABLE_LENOVO" ] && [ -f "$STABLE_LENOVO" ]; then
+            LENOVO_CONFIG="$STABLE_LENOVO"
           else
             LENOVO_CONFIG="$SELECTED_CONFIG"
           fi
 
-          # If target is specific device, prioritize selected config if compatible
-          if [ "$TARGET" = "AMD Ryzen 9" ] && ! echo "$SELECTED_CONFIG" | grep -qi "t440p"; then
-            RYZEN_CONFIG="$SELECTED_CONFIG"
-          elif [ "$TARGET" = "Lenovo Thinkpad T440p" ] && ! echo "$SELECTED_CONFIG" | grep -qi "ryzen"; then
-            LENOVO_CONFIG="$SELECTED_CONFIG"
+          # If target is specific device, prioritize selected config if compatible and not generic 'stable'
+          if [ "$TARGET" = "AMD Ryzen 9" ]; then
+            if [ "$SELECTED_CONFIG" != "stable" ] && ! echo "$SELECTED_CONFIG" | grep -qi "t440p"; then
+              RYZEN_CONFIG="$SELECTED_CONFIG"
+            fi
+            CONFIG_CHOICE="$RYZEN_CONFIG"
+          elif [ "$TARGET" = "Lenovo Thinkpad T440p" ]; then
+            if [ "$SELECTED_CONFIG" != "stable" ] && ! echo "$SELECTED_CONFIG" | grep -qi "ryzen"; then
+              LENOVO_CONFIG="$SELECTED_CONFIG"
+            fi
+            CONFIG_CHOICE="$LENOVO_CONFIG"
+          else
+            CONFIG_CHOICE="Both"
           fi
 
           RYZEN_JSON="{\"id\":\"ryzen9\",\"name\":\"AMD Ryzen 9\",\"config_path\":\"$RYZEN_CONFIG\",\"kcflags\":\"-march=znver3 -O2 -pipe\",\"kcppflags\":\"-march=znver3 -mtune=znver3\",\"arch_flags\":\"-march=znver3 -O2 -pipe\",\"local_version\":\"-ryzen9\"}"
@@ -198,7 +229,9 @@ jobs:
           echo "kernel_url=$DOWNLOAD_URL" >> "$GITHUB_OUTPUT"
           echo "git_tag=$GIT_TAG" >> "$GITHUB_OUTPUT"
           echo "config_version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "config_choice=$SELECTED_CONFIG" >> "$GITHUB_OUTPUT"
+          echo "config_choice=$CONFIG_CHOICE" >> "$GITHUB_OUTPUT"
+          echo "ryzen_config=$RYZEN_CONFIG" >> "$GITHUB_OUTPUT"
+          echo "lenovo_config=$LENOVO_CONFIG" >> "$GITHUB_OUTPUT"
 
           echo "========================================="
           echo "🎯 Target Option      : $TARGET"
@@ -609,9 +642,12 @@ jobs:
 
           {
             echo "## 🐧 Linux Kernel Release (${{ needs.prepare.outputs.kernel_tag }})"
-            echo
-            echo "**Target Selection:** ${{ needs.prepare.outputs.target_choice }}"
-            echo "**Config Selection:** \`${{ needs.prepare.outputs.config_choice }}\`"
+            if [ "${{ needs.prepare.outputs.target_choice }}" = "Both" ]; then
+              echo "**Target Selection:** Both (AMD Ryzen 9 & Lenovo Thinkpad T440p)"
+            else
+              echo "**Target Selection:** ${{ needs.prepare.outputs.target_choice }}"
+              echo "**Config Selection:** \`${{ needs.prepare.outputs.config_choice }}\`"
+            fi
             echo
             echo "---"
             echo
@@ -678,6 +714,14 @@ jobs:
         run: |
           RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
+          if [ "${TARGET_CHOICE}" = "Both" ]; then
+            CONFIG_LINE=""
+            TARGET_LINE="🎯 <b>Objetivo(s):</b> Both (AMD Ryzen 9 & Lenovo T440p)"
+          else
+            CONFIG_LINE="📄 <b>Config:</b> ${CONFIG_CHOICE}"
+            TARGET_LINE="🎯 <b>Objetivo(s):</b> ${TARGET_CHOICE}"
+          fi
+
           if [ "$BUILD_STATUS" = "success" ] && [ "$RELEASE_STATUS" = "success" ]; then
             DEB_LIST=$(find artifacts/ -name "*.deb" -exec basename {} \; 2>/dev/null | sort -u | sed 's/^/ • /')
             if [ -z "$DEB_LIST" ]; then
@@ -687,8 +731,8 @@ jobs:
             MESSAGE=$(printf "%s\n" \
               "<b>🐧 Linux Kernel Build ✅ Success</b>" \
               "" \
-              "🎯 <b>Objetivo(s):</b> ${TARGET_CHOICE}" \
-              "📄 <b>Config:</b> ${CONFIG_CHOICE}" \
+              "${TARGET_LINE}" \
+              ${CONFIG_LINE:+"${CONFIG_LINE}"} \
               "🏷️ <b>Versión Base:</b> ${KERNEL_TAG:-Desconocida}" \
               "🚀 <b>Release:</b> <a href=\"https://github.com/${GITHUB_REPOSITORY}/releases/tag/kernel-${RUN_NUMBER}\">kernel-${RUN_NUMBER}</a>" \
               "" \
@@ -730,7 +774,7 @@ jobs:
               "" \
               "⚠️ <b>Parámetros de la ejecución:</b>" \
               "• <b>Objetivo(s):</b> ${TARGET_CHOICE}" \
-              "• <b>Config:</b> ${CONFIG_CHOICE}" \
+              ${CONFIG_LINE:+"• ${CONFIG_LINE}"} \
               "• <b>Origen:</b> ${SRC_INFO}" \
               "" \
               "📋 <b>Diagnóstico del error:</b>" \
