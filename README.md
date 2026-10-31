@@ -36,30 +36,60 @@ system resources, and provides the fundamental services for all other software.
 
 ```mermaid
 graph TD
-    subgraph Job1["🔍 1. Prepare Environment (Debian Container)"]
-        A1["📦 Kernel Source<br/>(kernel.org / Git Tag)"] --> A3["🔧 make olddefconfig<br/>(+ Optional Patch)"]
-        A2["📄 Kconfig<br/>(configs/ or Remote)"] --> A3
-        A3 --> A4["📤 Upload Source Artifact"]
+    subgraph Job1["🔍 1. Prepare Environment & Source (debian:trixie)"]
+        A1["📦 Kernel Source<br/>(kernel.org tarball / git tag)"] --> A3["⚙️ Extract & Verify Source"]
+        A2["🎯 Target Selection<br/>(Ryzen 9 / T440p / Both)"] --> A4["🧩 Build Targets Matrix<br/>(znver3 / haswell)"]
+        A3 --> A5["📤 Upload Clean Source Artifact"]
     end
 
-    subgraph Job2["🐧 2. Build Kernel & Release (Debian Container)"]
-        B1["📥 Download Source Artifact"] --> B2["🐧 make bindeb-pkg<br/>(KCFLAGS='-march=znver3')"]
-        B2 --> B3["📦 Debian .deb Packages<br/>(headers, image, dbg, libc-dev)"]
-        B3 --> B4["🚀 GitHub Release"]
+    subgraph Job2["🐧 2. Matrix Build in Parallel (debian:trixie)"]
+        direction TB
+        subgraph MatrixRyzen["🖥️ AMD Ryzen 9"]
+            B1_R["📄 config-*-ryzen9<br/>+ make olddefconfig"]
+            B2_R["🔑 Inject MOK Key<br/>(Secure Boot Signing)"]
+            B3_R["🐧 make bindeb-pkg<br/>(KCFLAGS='-march=znver3 -O2')"]
+            B1_R --> B2_R --> B3_R
+        end
+        subgraph MatrixT440p["💻 Lenovo ThinkPad T440p"]
+            B1_L["📄 config-*-t440p<br/>+ make olddefconfig"]
+            B2_L["🔑 Inject MOK Key<br/>(Secure Boot Signing)"]
+            B3_L["🐧 make bindeb-pkg<br/>(KCFLAGS='-march=haswell -O2')"]
+            B1_L --> B2_L --> B3_L
+        end
     end
 
-    subgraph Job3["📤 3. Telegram Notification"]
-        C1["📲 Send Status &<br/>Logs to Telegram"]
+    subgraph Job3["🚀 3. Publish Unified Release (GitHub Runner)"]
+        C1["📥 Download & Merge Artifacts<br/>(Ryzen 9 & T440p .deb packages)"]
+        C2["📝 Generate Unified Release Notes<br/>+ SHA256 Checksums"]
+        C3["🏷️ GitHub Release<br/>(tag: kernel-RUN_NUMBER)"]
+        C1 --> C2 --> C3
     end
 
-    Job1 --> Job2
-    Job2 --> Job3
-    B4 -->|"💻 sudo apt install ./linux-*.deb"| D["🖥️ Workstation<br/>"]
+    subgraph Job4["📤 4. Telegram Notification"]
+        D1["📲 Send Status, .deb List<br/>& Error Logs"]
+    end
+
+    subgraph Deploy["💻 Deployment & Installation"]
+        E1["🖥️ Ryzen 9 Workstation<br/><code>sudo apt install ./linux-*-ryzen9*.deb</code>"]
+        E2["💻 ThinkPad T440p<br/><code>sudo apt install ./linux-*-t440p*.deb</code>"]
+    end
+
+    Job1 -->|"prepared-kernel-source"| Job2
+    Job2 -->|"compiled-kernel-artifacts-*"| Job3
+    Job3 --> Job4
+    Job2 -.->|"on failure"| Job4
+    C3 --> E1
+    C3 --> E2
 
     style Job1 fill:#1a202c,stroke:#319795,color:#fff
     style Job2 fill:#1a202c,stroke:#2b6cb0,color:#fff
+    style MatrixRyzen fill:#233044,stroke:#4299e1,color:#fff
+    style MatrixT440p fill:#233044,stroke:#4299e1,color:#fff
     style Job3 fill:#1a202c,stroke:#805ad5,color:#fff
-    style D fill:#dd6b20,stroke:#ed8936,color:#fff
+    style Job4 fill:#1a202c,stroke:#38a169,color:#fff
+    style Deploy fill:#2d3748,stroke:#ed8936,color:#fff
+    style E1 fill:#dd6b20,stroke:#ed8936,color:#fff
+    style E2 fill:#dd6b20,stroke:#ed8936,color:#fff
 ```
 ---
 
@@ -77,10 +107,10 @@ graph TD
 ### ⏱️ Scheduler, Latency & Ticks
 | Subsystem / Option | Kconfig Option | Engineering Rationale |
 | :--- | :--- | :--- |
-| **Scheduler & Preemption** | `CONFIG_PREEMPT_BUILD=y` / `CONFIG_PREEMPT=y` | Fully preemptible kernel for minimal input processing and audio latency. |
+| **Scheduler & Preemption** | `CONFIG_PREEMPT_BUILD=y` / `CONFIG_PREEMPT=y` / `CONFIG_PREEMPT_DYNAMIC=y` | Fully preemptible kernel with dynamic preemption switching for minimal input processing and audio latency. |
 | **Timer Frequency** | `1000 Hz` (`CONFIG_HZ_1000=y`, `CONFIG_HZ=1000`) | High-resolution tick frequency for desktop responsiveness and precise frame pacing. |
 | **Tickless Kernel** | `CONFIG_NO_HZ_IDLE=y` | Idle-tickless mode: suppresses timer interrupts on idle CPUs, reducing wakeup overhead. |
-| **Extensible Scheduler** | `CONFIG_SCHED_CLASS_EXT=y` & `CONFIG_EXT_GROUP_SCHED=y` | Support for dynamic userspace eBPF schedulers (`scx_bpfland`, `scx_rusty`). |
+| **EEVDF Core Scheduling** | `CONFIG_SCHED_CORE=y` & `CONFIG_SCHED_AUTOGROUP=y` | High-responsiveness EEVDF scheduler with SMT core isolation and per-TTY autogrouping. `sched_ext` (SCX) and BTF are intentionally disabled to guarantee 100% clean, hang-free initramfs booting on Debian 13. |
 
 ### 🎮 GPU RDNA 2, Display & Compute (ROCm)
 | Subsystem / Option | Kconfig Option | Engineering Rationale |
@@ -88,6 +118,7 @@ graph TD
 | **GPU Driver Stack** | `CONFIG_DRM_AMDGPU=m` | AMDGPU driver as loadable kernel module. Native RDNA 2 support, 16 GB Resizable BAR (ReBAR), and unlocked OverDrive power limits. |
 | **AMD Display Core** | `CONFIG_DRM_AMD_DC=y` / `CONFIG_DRM_AMD_DC_FP=y` | AMD Display Core with fast-path support for DCN 3.0 (Navi 21 / RX 6950 XT). |
 | **VRAM Cgroup Management**| `CONFIG_CGROUP_DMEM=y` | cgroups v2 Device Memory controller for dynamic VRAM resource allocation and priority control on `amdgpu`. |
+| **USB-C & DisplayPort AltMode** | `CONFIG_TYPEC=y` / `CONFIG_TYPEC_DP_ALTMODE=m` | Built-in USB Type-C connector subsystem with UCSI ACPI and DisplayPort Alternate Mode for USB-C monitors connected directly to the RX 6950 XT. |
 | **Heterogeneous Compute** | `CONFIG_HSA_AMD=y` / `CONFIG_DRM_AMDGPU_USERPTR=y` | Native AMD KFD driver for ROCm, Vulkan, OpenCL 3.0, and direct GPU user-pointer memory access. |
 | **Legacy Radeon Removal** | `# CONFIG_DRM_RADEON is not set` | Legacy Radeon DRM driver disabled to ensure exclusive execution of the `amdgpu` driver stack. |
 
@@ -101,6 +132,7 @@ graph TD
 ### 💾 Memory Management, ZRAM & Storage
 | Subsystem / Option | Kconfig Option | Engineering Rationale |
 | :--- | :--- | :--- |
+| **Multi-Gen LRU (MGLRU)** | `CONFIG_LRU_GEN=y` / `CONFIG_LRU_GEN_ENABLED=y` | Modern multi-generational LRU page reclamation with MMU walks (`CONFIG_LRU_GEN_WALKS_MMU=y`), minimizing page thrashing and memory pressure latency. |
 | **Memory / Zswap** | `CONFIG_ZSWAP=y` (`zswap.compressor=lzo`) | In-RAM compressed swap cache matching kernel boot parameters. |
 | **ZRAM Devices** | `CONFIG_ZRAM=y` (`zram.comp=lzo-rle`) | Compressed RAM block devices for high-performance dynamic swap. |
 | **Loop & RAM Disk** | `CONFIG_BLK_DEV_LOOP=m` / `CONFIG_BLK_DEV_RAM=m` | Support for mounting ISO/disk images (`loop`) and RAM disk block devices. |
@@ -123,8 +155,8 @@ graph TD
 | **Control Flow Integrity**| `CONFIG_X86_CET=y` / `CONFIG_X86_KERNEL_IBT=y` | Hardware-enforced Indirect Branch Tracking for kernel control-flow integrity on Zen 3. |
 | **User Shadow Stack** | `CONFIG_X86_USER_SHADOW_STACK=y` | CET Shadow Stack for user-space return address protection. |
 | **eBPF Security (LSM)** | `CONFIG_BPF_LSM=y` / `CONFIG_BPF_JIT=y` | In-kernel eBPF Linux Security Module with eBPF JIT compiler enabled and active by default. |
-| **Stack Unwinder & Tracing**| `UNWINDER_ORC=y` / `DEBUG_INFO_BTF=y` | Low-overhead ORC call stack unwinding and Pahole split-BTF typeinfo for eBPF/ftrace kernel profiling. |
-| **Module Cleanup (91%)** | 233 Essential Modules (`=m`) | Massive 91% reduction in loadable modules (from 2,631 to 233). Removed unused Intel/NVIDIA GPUs, unused network vendors, and TV/DVB cards. |
+| **Stack Unwinder & Tracing**| `UNWINDER_ORC=y` / `CONFIG_DEBUG_INFO_NONE=y` | Low-overhead ORC call stack unwinding with stripped debug symbols for instant initramfs boot times and zero hang risk. |
+| **Module Cleanup (94%)** | 233 Essential Modules (`=m`) | Massive 94.2% reduction in loadable modules vs Debian stock (from 4,052 down to 233). Removed unused Intel/NVIDIA GPUs, unused network vendors, and TV/DVB cards. |
 | **Signed Modules & Secure Boot**| `CONFIG_MODULE_SIG=y` / `CONFIG_SYSTEM_TRUSTED_KEYS` | Cryptographic signature validation for loadable modules (`SHA-256`) and full UEFI Secure Boot compatibility via MOK. |
 
 ---
@@ -133,12 +165,12 @@ graph TD
 
 This custom kernel build and CI/CD pipeline are specifically tuned for **this exact hardware**: AMD Ryzen 9 5950X (Zen 3) and AMD Radeon RX 6950 XT (RDNA 2) running on Debian 13.
 
-The guiding philosophy is **aggressive module & bloat removal (91% module reduction, from 2,631 down to 233 essential modules) while retaining security, performance, and diagnostic capabilities**:
+The guiding philosophy is **aggressive module & bloat removal (94.2% module reduction vs Debian stock, from 4,052 down to 233 essential modules) while retaining security, performance, and diagnostic capabilities**:
 - 🔧 CPU-specific optimization (Zen 3, 32 threads, AMD pstate, PREEMPT, 1000 Hz)
 - 🎮 GPU-specific support (RDNA 2 / amdgpu module, ROCm, VRAM cgroups)
 - 🌐 Targeted network drivers only (Intel I211 `igb` + Intel 10GbE `ixgbe` + Intel AX210 `iwlwifi` / `btusb`)
 - 🔐 Security retained (all CPU mitigations, CET/IBT, BPF LSM)
-- 🔍 Diagnostics retained (BTF, Ftrace, Kprobes, ORC)
+- 🔍 Diagnostics retained (Ftrace, Kprobes, Uprobes, ORC)
 - 🗑️ Hardware bloat removed (Intel GPU, NVIDIA, legacy Radeon, unused network vendors, legacy buses, TV/DVB)
 
 ### 🧹 1. Hardware Trimming & Bloat Elimination
@@ -169,12 +201,12 @@ The guiding philosophy is **aggressive module & bloat removal (91% module reduct
 - **Sized Core Count**: Sized to `CONFIG_NR_CPUS=32` matching exact hardware threads, removing virtual CPU overhead.
 - **AMD P-State Driver**: Native `amd-pstate` CPPC driver with EPP enabled (`CONFIG_X86_AMD_PSTATE=y`) for microsecond-level frequency scaling (`# CONFIG_X86_AMD_PSTATE_UT is not set` in production).
 - **NUMA Infrastructure**: NUMA support is retained (`CONFIG_NUMA=y`, `CONFIG_AMD_NUMA=y`, `CONFIG_X86_64_ACPI_NUMA=y`) for correct hardware topology detection. Automatic NUMA balancing (`# CONFIG_NUMA_BALANCING is not set`) is disabled to eliminate background memory scan overhead on this single-node Ryzen system.
-- **eBPF Extensible Scheduler (`sched-ext`)**: Enabled in-kernel eBPF scheduler class (`CONFIG_SCHED_CLASS_EXT=y`). This exposes the `sched-ext` API that relies on the kernel BPF infrastructure (`CONFIG_BPF=y`, `CONFIG_BPF_SYSCALL=y`, `CONFIG_BPF_JIT=y`). External schedulers like `scx_bpfland` or `scx_rusty` can be loaded at runtime via userspace tools — they are **not** part of this kernel build.
-- **Extended Group Scheduling**: `CONFIG_EXT_GROUP_SCHED=y` enables the extended group scheduling infrastructure used by `sched-ext` and cgroup-aware scheduling policies.
+- **High-Responsiveness EEVDF Scheduler**: Official Linux mainline EEVDF CPU scheduler tuned with `1000 Hz` tick rate (`CONFIG_HZ_1000=y`), `PREEMPT_DYNAMIC=y`, and interactive autogrouping (`CONFIG_SCHED_AUTOGROUP=y`). Note: `sched_ext` (SCX) and heavy BTF typeinfo are intentionally omitted (`CONFIG_DEBUG_INFO_NONE=y`) in production to completely eliminate initramfs hangs and boot stalls in Debian 13.
 
 ### 🎮 4. GPU & Display Core (Radeon RX 6950 XT / Navi 21)
 - **AMDGPU as Module**: `CONFIG_DRM_AMDGPU=m` — the AMDGPU driver is a loadable kernel module, not built into the kernel image. This is the standard Debian/upstream configuration for GPU drivers.
 - **Display Core (DCN 3.0)**: AMD Display Core enabled (`CONFIG_DRM_AMD_DC=y`) with fast-path support (`CONFIG_DRM_AMD_DC_FP=y`), optimized for Navi 21 / RDNA 2 architecture (DCN 3.0).
+- **USB Type-C & DisplayPort AltMode**: Native Type-C subsystem (`CONFIG_TYPEC=y`, `CONFIG_USB_COMMON=y`) with UCSI ACPI driver (`CONFIG_TYPEC_UCSI=y`, `CONFIG_UCSI_ACPI=y`) and DisplayPort Alternate Mode module (`CONFIG_TYPEC_DP_ALTMODE=m`) enabling direct USB-C monitor connectivity with zero video delay on boot.
 - **Additional AMDGPU features**: Audio CoProcessor (`CONFIG_DRM_AMD_ACP=y`), Secure Display (`CONFIG_DRM_AMD_SECURE_DISPLAY=y`), and ISP support (`CONFIG_DRM_AMD_ISP=y`) enabled.
 - **Heterogeneous Compute (ROCm / KFD)**: AMD HSA kernel driver (`CONFIG_HSA_AMD=y`) enabled for ROCm, Vulkan, and OpenCL compute.
 - **Direct GPU Memory Access**: `CONFIG_DRM_AMDGPU_USERPTR=y` allowing GPU direct access to user space memory pointers.
@@ -188,6 +220,7 @@ The guiding philosophy is **aggressive module & bloat removal (91% module reduct
 - **`IO_URING_ZCRX`**: Zero-copy network reception (`CONFIG_IO_URING_ZCRX=y`) enabled for ultra-fast socket I/O.
 
 ### 💾 6. Memory Tuning (Zswap, ZRAM & Loop)
+- **Multi-Gen LRU (MGLRU)**: Multi-Generational Least Recently Used page reclamation (`CONFIG_LRU_GEN=y`, `CONFIG_LRU_GEN_ENABLED=y`, `CONFIG_LRU_GEN_WALKS_MMU=y`). Replaces legacy two-tier page reclamation with high-performance generational aging and page-table scanning, drastically reducing reclaim latency and memory thrashing under heavy loads.
 - **Zswap Storage**: Native `zswap` with `lzo` compressor (`CONFIG_ZSWAP=y`, `CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO=y`) matching kernel boot parameters.
 - **ZRAM Compressed RAM Devices**: `CONFIG_ZRAM=y` (`zram.comp=lzo-rle`) enabled for compressed swap/RAM block devices.
 - **Loop & RAM Disk Devices**: `CONFIG_BLK_DEV_LOOP=m` and `CONFIG_BLK_DEV_RAM=m` enabled for mounting disk images and loopback/RAM devices.
@@ -200,8 +233,8 @@ The guiding philosophy is **aggressive module & bloat removal (91% module reduct
 - **ORC Unwinder & Hung Task Detection**: ORC stack unwinder (`CONFIG_UNWINDER_ORC=y`) and automatic 120s hung task detection (`CONFIG_DETECT_HUNG_TASK=y`).
 - **Scheduler Statistics**: Real-time scheduler statistics (`CONFIG_SCHEDSTATS=y`, `CONFIG_SCHED_INFO=y`) for performance profiling and `perf sched` analysis.
 - **Full Ftrace Suite**: Complete function tracing infrastructure (`CONFIG_FTRACE=y`, `CONFIG_FUNCTION_TRACER=y`, `CONFIG_FUNCTION_GRAPH_TRACER=y`, `CONFIG_DYNAMIC_FTRACE=y`, `CONFIG_STACK_TRACER=y`).
-- **Kernel Probes**: `CONFIG_KPROBE_EVENTS=y`, `CONFIG_UPROBE_EVENTS=y`, `CONFIG_BPF_EVENTS=y` — enabling `perf`, `bpftrace`, and eBPF-based tracing tools.
-- **BTF Type Information**: `CONFIG_DEBUG_INFO_BTF=y` and `CONFIG_DEBUG_INFO_BTF_MODULES=y` — required for CO-RE eBPF programs and tools like `bpftool` and `bpftrace`.
+- **Kernel Probes**: `CONFIG_KPROBE_EVENTS=y`, `CONFIG_UPROBE_EVENTS=y`, `CONFIG_BPF_EVENTS=y` — enabling `perf` and event-based tracing tools.
+- **Fast Initramfs Boot (No BTF Hangs)**: `CONFIG_DEBUG_INFO_NONE=y` — debug symbols and heavy BTF typeinfo are stripped from loadable modules. This completely eliminates initramfs parsing deadlocks and provides rapid, reliable booting.
 - **Block I/O Tracing**: `CONFIG_BLK_DEV_IO_TRACE=y` for `blktrace`/`blkparse` disk I/O analysis.
 - **Automated Workflow**: GitHub Actions workflow generating `.deb` packages with explicit `-march=znver3` flags and dynamic Git commit changelogs on GitHub Releases.
 
@@ -231,9 +264,7 @@ This is **intentional**: the project removes unnecessary runtime hardware suppor
 ```
 CONFIG_DEBUG_KERNEL=y
 CONFIG_DEBUG_MISC=y
-CONFIG_DEBUG_INFO=y
-CONFIG_DEBUG_INFO_BTF=y
-CONFIG_DEBUG_INFO_BTF_MODULES=y
+CONFIG_DEBUG_INFO_NONE=y
 CONFIG_DYNAMIC_DEBUG=y
 CONFIG_DYNAMIC_DEBUG_CORE=y
 ```
@@ -313,7 +344,7 @@ After booting into the custom kernel, verify active optimizations using the foll
 #### Kernel version
 ```bash
 $ uname -a
-Linux debian 7.2.8-ryzen9 #ryzen9 SMP PREEMPT_DYNAMIC Thu Oct  1 23:31:21 CEST 2026 x86_64 GNU/Linux
+Linux ryzen 7.3.0-ryzen9 #ryzen9 SMP PREEMPT_DYNAMIC Sat Oct 31 08:27:58 CET 2026 x86_64 GNU/Linux
 ```
 
 #### CPU topology
@@ -353,9 +384,23 @@ No output expected — `RCU_BOOST` and `RCU_NOCB_CPU` are not set in this config
 
 #### TCP BBR
 ```bash
-$ sysctl net.ipv4.tcp_congestion_control
-net.ipv4.tcp_congestion_control = bbr
+$ cat /proc/sys/net/ipv4/tcp_congestion_control
+bbr
 ```
+
+#### Multi-Gen LRU (MGLRU)
+```bash
+$ cat /sys/kernel/mm/lru_gen/enabled
+0x0007
+```
+> `0x0007` indicates all components of Multi-Gen LRU are active (kswapd, direct reclaim, page-table walks).
+
+#### Resizable BAR (ReBAR)
+```bash
+$ sudo dmesg | grep -i "Detected VRAM"
+[drm] Detected VRAM RAM=16368M, BAR=16384M
+```
+> Confirms full 16 GB Resizable BAR active on AMD Radeon RX 6950 XT.
 
 #### Zswap
 ```bash
@@ -415,12 +460,11 @@ CONFIG_BPF_JIT_DEFAULT_ON=y
 # CONFIG_BPF_JIT_ALWAYS_ON is not set
 ```
 
-#### sched-ext
+#### USB Type-C & UCSI
 ```bash
-$ cat /sys/kernel/sched_ext/state 2>/dev/null
-disabled
+$ ls -l /sys/class/typec/
 ```
-> `disabled` means the mechanism is available but no external BPF scheduler is currently loaded. Use `scx_bpfland` or `scx_rusty` to activate.
+> Shows registered Type-C connector ports and UCSI status for USB-C monitors and peripherals.
 
 #### ORC Unwinder
 ```bash
@@ -441,9 +485,9 @@ $ sudo dmesg | grep -Ei "amdgpu|BAR|Resizable"
 The configuration embedded in the installed kernel can be extracted directly from the Debian package:
 
 ```bash
-$ dpkg-deb --fsys-tarfile linux-image-6.19.14-ryzen9_*.deb \
-  | tar -x ./boot/config-6.19.14-ryzen9 -O \
-  | grep -E "CONFIG_(X86_NATIVE_CPU|NR_CPUS|PREEMPT|NO_HZ|BPF_JIT|CGROUP_DMEM|DRM_AMDGPU|HSA_AMD)"
+$ dpkg-deb --fsys-tarfile linux-image-7.3-ryzen9_*.deb \
+  | tar -x ./boot/config-7.3-ryzen9 -O \
+  | grep -E "CONFIG_(X86_NATIVE_CPU|NR_CPUS|PREEMPT|NO_HZ|BPF_JIT|CGROUP_DMEM|DRM_AMDGPU|HSA_AMD|TYPEC)"
 CONFIG_NO_HZ_IDLE=y
 CONFIG_PREEMPT_BUILD=y
 CONFIG_PREEMPT=y
@@ -538,18 +582,15 @@ $ sudo dmesg | grep -Ei "certificate|keyring|asymmetric"
 
 ---
 
-🖥️ Workstation Hardware Specs
------------
-
 ### 🐧 Kernel and Toolchain
 | Element             | Value               |
 | ------------------- | ------------------- |
-| Kernel              | 6.19.14-ryzen9      |
+| Kernel              | 7.3-ryzen9          |
 | Model               | SMP PREEMPT_DYNAMIC |
 | Base Distribution   | Debian 13           |
 | Compiler            | GCC 14.2.0          |
 | Target Architecture | Zen 3               |
-| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="amdgpu.ppfeaturemask=0xffffffff zswap.enabled=1 zswap.compressor=lzo"` |
+| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="amdgpu.ppfeaturemask=0xffffffff zswap.enabled=1 zswap.compressor=lzo efi=nodbx"` |
 
 ### 📦 Build Dependencies
 
@@ -570,23 +611,27 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | `zstd` | `1.5.7+dfsg-1` |
 | `libdw-dev` | `0.192-4` |
 | `libelf-dev` | `0.192-4` |
-| `libssl-dev` | `3.5.7-1~deb13u2` |
+| `libssl-dev` | `3.5.7-1~deb13u3` |
 | `libncurses-dev` | `6.5+20250216-2` |
 | `dwarves` | `1.30-1` |
 | `debhelper` | `13.24.2` |
-| `rsync` | `3.4.1+ds1-5+deb13u4` |
+| `rsync` | `3.5.0+ds1-0+deb13u1` |
 | `python3` | `3.13.5-1` |
-| `curl` | `8.14.1-2+deb13u5` |
+| `curl` | `8.14.1-2+deb13u7` |
 | `jq` | `1.7.1-6+deb13u4` |
 | `patch` | `2.8-2` |
 | `kmod` | `34.2-2` |
 | `perl` | `5.40.1-6+deb13u1` |
 | `mawk` | `1.3.4.20250131-1` |
 | `tar` | `1.35+dfsg-3.1` |
-| `xz-utils` | `5.8.1-1+deb13u1` |
+| `xz-utils` | `5.8.1-1+deb13u2` |
 | `git` | `1:2.47.3-0+deb13u1` |
 
-### 🧠 CPU
+---
+
+### 🖥️ Workstation AMD specs
+
+### 🧠 CPU 
 | Component         | Details                                          |
 | ----------------- | ------------------------------------------------ |
 | Architecture      | x86_64 `amd64`                                   |
@@ -631,7 +676,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 ### 🎮 GPU APIs
 |        API        |     Versión      |               Driver                              |
 | ----------------- | ---------------- | ------------------------------------------------- |
-| **Kernel**        | `7.2.8-ryzen9`   | Custom Linux kernel                               |
+| **Kernel**        | `7.3-ryzen9`     | Custom Linux kernel                               |
 | **AMDGPU / DRM**  | `3.64`           | AMDGPU — AMD Radeon RX 6950 XT / NAVI21           |
 | **Vulkan**        | `1.4.309`        | RADV — Mesa `25.0.7-2+deb13u1`                    |
 | **OpenCL**        | `3.0`            | RustiCL — Mesa `25.0.7-2+deb13u1`                 |
@@ -717,3 +762,24 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | Fan rear   | [1x Noctua NF-F12 PWM](https://www.noctua.at/en/products/nf-f12-pwm/specifications) | [Amazon](https://link.amazon/B0cMLbexh) |
 | Thermal Paste | [Noctua NT-H2](https://www.noctua.at/en/products/nt-h2-3-5g/specifications) | [Amazon](https://link.amazon/B0gr5P2hL) |
 | Fan hub | [Noctua NA-FH1](https://www.noctua.at/en/products/na-fh1/specifications) | [Amazon](https://link.amazon/B05P6ZAgX) |
+
+---
+
+### 💻 Lenovo ThinkPad T440p specs
+
+### 🐧 Kernel & Hardware Specifications
+| Element | Value | Engineering Rationale |
+| :--- | :--- | :--- |
+| **Kernel Version** | `7.3-t440p` | Custom Linux kernel tuned for mobile Haswell architecture. |
+| **Target CPU** | Intel Core i7-4700MQ | 4 cores / 8 threads (Haswell, 22nm, TDP 47W). |
+| **CPU Core Sizing** | `CONFIG_NR_CPUS=8` | Hardcapped to 8 exact threads, removing virtual CPU bitmap overhead. |
+| **Timer Tick Rate** | `250 Hz` (`CONFIG_HZ_250=y`) | Optimal thermal/battery balance for mobile Haswell; allows cores to reach deep C6/C7 sleep states. |
+| **Preemption Model** | `CONFIG_PREEMPT_DYNAMIC=y` | Low-latency dynamic preemption for smooth desktop experience. |
+| **Integrated GPU** | `CONFIG_DRM_I915=m` | Intel HD Graphics 4600 driver module (exclusive; AMD/Nvidia removed). |
+| **PCIe ASPM Policy** | `CONFIG_PCIEASPM_DEFAULT=y` | BIOS-guided ASPM policy; prevents PCIe link timeouts (error -110) on Sierra Wireless EM7345 4G LTE modem and xHCI controllers. |
+| **WWAN 4G LTE Modem** | Sierra Wireless EM7345 (`CONFIG_USB_NET_CDC_MBIM=m`) | Native mobile broadband support for internal M.2 Sierra Wireless EM7345 LTE modem (`1199:a001`) via CDC MBIM/NCM networking protocol. |
+| **USB xHCI Roles** | `CONFIG_USB_ROLE_SWITCH=m` / `CONFIG_USB_ROLES_INTEL_XHCI=m` | Hardware-accurate USB 3.0 role switching for Intel Lynx Point chipset. |
+| **Card Reader & Media** | `CONFIG_MMC=y` / `CONFIG_MMC_SDHCI_PCI=y` / `CONFIG_MEMSTICK=y` | Native Realtek/SDHCI PCI bus card reader and combo media stick support. |
+| **Touchpad & TrackPoint**| `CONFIG_RMI4_SMB=m` / `CONFIG_RMI4_F03=y` | Native Synaptics RMI4 over SMBus with TrackPoint guest pass-through, modern multi-touch, and hardware button support (`F11`/`F12`/`F30`). |
+| **Module Cleanup (94%)** | 255 Essential Modules (`=m`) | Massive 93.7% reduction in loadable modules vs Debian stock (from 4,052 down to 255). Stripped non-Intel GPUs, foreign wireless cards, and server controllers. |
+| **Initramfs Safety** | `CONFIG_DEBUG_INFO_NONE=y` | Stripped debug/BTF symbols to eliminate boot stalls and initramfs deadlocks. |
