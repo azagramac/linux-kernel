@@ -4974,7 +4974,7 @@ CONFIG_USB_HIDDEV=y
 
 CONFIG_USB_OHCI_LITTLE_ENDIAN=y
 CONFIG_USB_SUPPORT=y
-CONFIG_USB_COMMON=m
+CONFIG_USB_COMMON=y
 CONFIG_USB_LED_TRIG=y
 # CONFIG_USB_ULPI_BUS is not set
 # CONFIG_USB_CONN_GPIO is not set
@@ -5168,7 +5168,39 @@ CONFIG_USB_SERIAL_DEBUG=m
 # end of USB Physical Layer drivers
 
 # CONFIG_USB_GADGET is not set
-# CONFIG_TYPEC is not set
+CONFIG_TYPEC=y
+# CONFIG_TYPEC_TCPM is not set
+CONFIG_TYPEC_UCSI=y
+# CONFIG_UCSI_CCG is not set
+CONFIG_UCSI_ACPI=y
+# CONFIG_UCSI_STM32G0 is not set
+# CONFIG_TYPEC_TPS6598X is not set
+# CONFIG_TYPEC_RT1719 is not set
+# CONFIG_TYPEC_STUSB160X is not set
+# CONFIG_TYPEC_WUSB3801 is not set
+
+#
+# USB Type-C Multiplexer/DeMultiplexer Switch support
+#
+# CONFIG_TYPEC_MUX_FSA4480 is not set
+# CONFIG_TYPEC_MUX_GPIO_SBU is not set
+# CONFIG_TYPEC_MUX_PI3USB30532 is not set
+# CONFIG_TYPEC_MUX_IT5205 is not set
+# CONFIG_TYPEC_MUX_NB7VPQ904M is not set
+# CONFIG_TYPEC_MUX_PS883X is not set
+# CONFIG_TYPEC_MUX_PTN36502 is not set
+# CONFIG_TYPEC_MUX_TUSB1046 is not set
+# CONFIG_TYPEC_MUX_WCD939X_USBSS is not set
+# end of USB Type-C Multiplexer/DeMultiplexer Switch support
+
+#
+# USB Type-C Alternate Mode drivers
+#
+CONFIG_TYPEC_DP_ALTMODE=m
+# CONFIG_TYPEC_NVIDIA_ALTMODE is not set
+# CONFIG_TYPEC_TBT_ALTMODE is not set
+# end of USB Type-C Alternate Mode drivers
+
 # CONFIG_USB_ROLE_SWITCH is not set
 # CONFIG_MMC is not set
 # CONFIG_SCSI_UFSHCD is not set
@@ -5796,6 +5828,7 @@ CONFIG_RESET_CONTROLLER=y
 #
 CONFIG_GENERIC_PHY=y
 # CONFIG_PHY_CAN_TRANSCEIVER is not set
+# CONFIG_PHY_GOOGLE_USB is not set
 # CONFIG_USB_LGM_PHY is not set
 # CONFIG_PHY_NXP_TJA1145 is not set
 
