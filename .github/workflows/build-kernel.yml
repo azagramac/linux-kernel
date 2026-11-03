@@ -13,18 +13,20 @@ on:
           - 'Both'
         default: 'Both'
       config:
-        description: '📄 Kernel configuration file'
+        description: '📄 Kernel configuration file (kernel version is taken from its name)'
         required: true
         type: choice
         options:
           - 'stable'
-          - 'configs/stable/config-7.3-ryzen9-debian13-signed'
-          - 'configs/stable/config-7.3-t440p-debian13-signed'
-          - 'configs/archived/config-6.19.14-ryzen9-debian13-signed'
-          - 'configs/archived/config-6.19.14-t440p-debian13-signed'
-          - 'configs/testing/config-6.19.14-debian13'
+          - 'configs/stable/config-7.3.1-ryzen9-debian13'
+          - 'configs/stable/config-7.3.1-t440p-debian13'
+          - 'configs/archive/config-7.3-ryzen9-debian13'
+          - 'configs/archive/config-7.3-t440p-debian13'
+          - 'configs/archive/config-6.19.14-ryzen9-debian13'
+          - 'configs/archive/config-6.19.14-t440p-debian13'
           - 'configs/testing/config-7.2.9-debian13'
           - 'configs/testing/config-7.2.8-debian13'
+          - 'configs/testing/config-6.19.14-debian13'
           - 'custom'
         default: 'stable'
       custom_config:
@@ -49,7 +51,6 @@ permissions:
 
 env:
   NODE_OPTIONS: "--no-deprecation"
-  DEFAULT_URL: 'https://www.kernel.org/pub/linux/kernel/v7.x/linux-7.3.tar.gz'
   RAW_BASE_URL: "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/"
   KERNEL_TARGET: ${{ inputs.target }}
   KERNEL_CONFIG: ${{ inputs.config }}
@@ -58,13 +59,13 @@ env:
 
 jobs:
   prepare:
-    name: 🔍 1. Prepare Environment & Source
+    name: 🔍 1. Prepare Environment & Config Resolution
     runs-on: ubuntu-latest
     container:
       image: debian:trixie
 
     outputs:
-      kernel_tag: ${{ steps.kernel_source.outputs.kernel_tag }}
+      kernel_tag: ${{ steps.matrix_config.outputs.kernel_tag }}
       targets_matrix: ${{ steps.matrix_config.outputs.targets_matrix }}
       target_choice: ${{ inputs.target }}
       config_choice: ${{ steps.matrix_config.outputs.config_choice }}
@@ -76,20 +77,14 @@ jobs:
       - name: 🛠️ Prepare container base tools
         run: |
           apt-get update -qq
-          apt-get install -y git sudo curl tar xz-utils procps
+          apt-get install -y git sudo curl tar xz-utils procps jq
 
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 10
 
-      - name: ⚙️ Install base build dependencies
-        run: |
-          sudo apt install -y git build-essential gcc-14 g++-14 bc bison flex curl jq patch
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
-
-      - name: 🎯 Determine build targets matrix & source
+      - name: 🎯 Determine build targets matrix & kernel version from config
         id: matrix_config
         shell: bash
         run: |
@@ -102,108 +97,97 @@ jobs:
           if [ "$SELECTED_CONFIG" = "custom" ] && [ -n "$CUSTOM_CONFIG" ]; then
             SELECTED_CONFIG="$CUSTOM_CONFIG"
           fi
+          [ -z "$SELECTED_CONFIG" ] && SELECTED_CONFIG="stable"
 
-          # Determine dynamic stable defaults (active configs currently in configs/stable/)
-          STABLE_RYZEN=$(find configs/stable -maxdepth 1 -name "*ryzen*" 2>/dev/null | head -n1)
-          STABLE_LENOVO=$(find configs/stable -maxdepth 1 -name "*t440p*" 2>/dev/null | head -n1)
-
-          if [ "$SELECTED_CONFIG" = "stable" ] || [ -z "$SELECTED_CONFIG" ]; then
-            VERSION=$(basename "$STABLE_RYZEN" | sed -nE 's/.*config-([0-9]+(\.[0-9]+)+).*/\1/p')
-          else
-            # Extract version from config name (e.g. config-7.3-ryzen9-... -> 7.3)
-            VERSION=$(basename "$SELECTED_CONFIG" | sed -nE 's/.*config-([0-9]+(\.[0-9]+)+).*/\1/p')
-          fi
-
-          # Fallback: check inside config file header if present
-          if [ -z "$VERSION" ] && [ -f "$SELECTED_CONFIG" ]; then
-            VERSION=$(grep -m1 -E '^[# ]*Linux/x86 [0-9]' "$SELECTED_CONFIG" | awk '{print $3}' | sed 's/\.0$//')
-          elif [ -z "$VERSION" ] && [ -f "configs/$SELECTED_CONFIG" ]; then
-            VERSION=$(grep -m1 -E '^[# ]*Linux/x86 [0-9]' "configs/$SELECTED_CONFIG" | awk '{print $3}' | sed 's/\.0$//')
-          fi
-
-          if [ -z "$VERSION" ]; then
-            VERSION="7.3"
-          fi
-
-          MAJOR=$(echo "$VERSION" | cut -d. -f1)
-
-          # Determine Ryzen config path
-          if [ "$SELECTED_CONFIG" = "stable" ]; then
-            RYZEN_CONFIG="$STABLE_RYZEN"
-          elif echo "$SELECTED_CONFIG" | grep -qi "ryzen"; then
-            RYZEN_CONFIG="$SELECTED_CONFIG"
-          elif [ -f "configs/stable/config-${VERSION}-ryzen9-debian13-signed" ]; then
-            RYZEN_CONFIG="configs/stable/config-${VERSION}-ryzen9-debian13-signed"
-          elif [ -f "configs/archived/config-${VERSION}-ryzen9-debian13-signed" ]; then
-            RYZEN_CONFIG="configs/archived/config-${VERSION}-ryzen9-debian13-signed"
-          elif [ -f "configs/stable/config-${VERSION}-debian13-signed" ]; then
-            RYZEN_CONFIG="configs/stable/config-${VERSION}-debian13-signed"
-          elif [ -f "configs/archived/config-${VERSION}-debian13-signed" ]; then
-            RYZEN_CONFIG="configs/archived/config-${VERSION}-debian13-signed"
-          elif [ -f "configs/stable/config-${VERSION}-debian13" ]; then
-            RYZEN_CONFIG="configs/stable/config-${VERSION}-debian13"
-          elif [ -f "$SELECTED_CONFIG" ]; then
-            RYZEN_CONFIG="$SELECTED_CONFIG"
-          elif [ -f "configs/$SELECTED_CONFIG" ]; then
-            RYZEN_CONFIG="configs/$SELECTED_CONFIG"
-          elif [ -n "$STABLE_RYZEN" ] && [ -f "$STABLE_RYZEN" ]; then
-            RYZEN_CONFIG="$STABLE_RYZEN"
-          else
-            RYZEN_CONFIG="$SELECTED_CONFIG"
-          fi
-
-          # Determine Lenovo Thinkpad T440p config path
-          if [ "$SELECTED_CONFIG" = "stable" ]; then
-            LENOVO_CONFIG="$STABLE_LENOVO"
-          elif echo "$SELECTED_CONFIG" | grep -qi "t440p"; then
-            LENOVO_CONFIG="$SELECTED_CONFIG"
-          elif [ -f "configs/stable/config-${VERSION}-t440p-debian13-signed" ]; then
-            LENOVO_CONFIG="configs/stable/config-${VERSION}-t440p-debian13-signed"
-          elif [ -f "configs/archived/config-${VERSION}-t440p-debian13-signed" ]; then
-            LENOVO_CONFIG="configs/archived/config-${VERSION}-t440p-debian13-signed"
-          elif [ -f "configs/stable/config-${VERSION}-debian13-signed" ]; then
-            LENOVO_CONFIG="configs/stable/config-${VERSION}-debian13-signed"
-          elif [ -f "configs/archived/config-${VERSION}-debian13-signed" ]; then
-            LENOVO_CONFIG="configs/archived/config-${VERSION}-debian13-signed"
-          elif [ -f "configs/stable/config-${VERSION}-debian13" ]; then
-            LENOVO_CONFIG="configs/stable/config-${VERSION}-debian13"
-          elif [ -f "$SELECTED_CONFIG" ]; then
-            LENOVO_CONFIG="$SELECTED_CONFIG"
-          elif [ -f "configs/$SELECTED_CONFIG" ]; then
-            LENOVO_CONFIG="configs/$SELECTED_CONFIG"
-          elif [ -n "$STABLE_LENOVO" ] && [ -f "$STABLE_LENOVO" ]; then
-            LENOVO_CONFIG="$STABLE_LENOVO"
-          else
-            LENOVO_CONFIG="$SELECTED_CONFIG"
-          fi
-
-          # If target is specific device, prioritize selected config if compatible and not generic 'stable'
-          if [ "$TARGET" = "AMD Ryzen 9" ]; then
-            if [ "$SELECTED_CONFIG" != "stable" ] && ! echo "$SELECTED_CONFIG" | grep -qi "t440p"; then
-              RYZEN_CONFIG="$SELECTED_CONFIG"
+          # Normalize a user-provided path to an existing file in the repo
+          if [ "$SELECTED_CONFIG" != "stable" ]; then
+            if [ -f "$SELECTED_CONFIG" ]; then :
+            elif [ -f "configs/$SELECTED_CONFIG" ]; then SELECTED_CONFIG="configs/$SELECTED_CONFIG"
+            else
+              echo "❌ Config file not found: $SELECTED_CONFIG"
+              exit 1
             fi
-            CONFIG_CHOICE="$RYZEN_CONFIG"
-          elif [ "$TARGET" = "Lenovo Thinkpad T440p" ]; then
-            if [ "$SELECTED_CONFIG" != "stable" ] && ! echo "$SELECTED_CONFIG" | grep -qi "ryzen"; then
-              LENOVO_CONFIG="$SELECTED_CONFIG"
-            fi
-            CONFIG_CHOICE="$LENOVO_CONFIG"
-          else
-            CONFIG_CHOICE="Both"
           fi
 
-          RYZEN_JSON="{\"id\":\"ryzen9\",\"name\":\"AMD Ryzen 9\",\"config_path\":\"$RYZEN_CONFIG\",\"kcflags\":\"-march=znver3 -O2 -pipe\",\"kcppflags\":\"-march=znver3 -mtune=znver3\",\"arch_flags\":\"-march=znver3 -O2 -pipe\",\"local_version\":\"-ryzen9\"}"
-          LENOVO_JSON="{\"id\":\"t440p\",\"name\":\"Lenovo Thinkpad T440p\",\"config_path\":\"$LENOVO_CONFIG\",\"kcflags\":\"-march=haswell -mtune=haswell -O2 -pipe\",\"kcppflags\":\"-march=haswell -mtune=haswell\",\"arch_flags\":\"-march=haswell -mtune=haswell -O2 -pipe\",\"local_version\":\"-t440p\"}"
+          # Newest config in configs/stable for a device id (e.g. ryzen9, t440p)
+          stable_for() {
+            find configs/stable -maxdepth 1 -type f -name "config-*-$1-*" 2>/dev/null | sort -V | tail -n1
+          }
+
+          # Pick config for a device: $1=device id, $2=other device id
+          resolve_config() {
+            if [ "$SELECTED_CONFIG" = "stable" ] || [[ "$(basename "$SELECTED_CONFIG")" == *"-$2-"* ]]; then
+              stable_for "$1"
+            else
+              echo "$SELECTED_CONFIG"
+            fi
+          }
+
+          # Kernel version from file name (config-7.3.1-ryzen9-... -> 7.3.1),
+          # fallback to header "# Linux/x86 7.3.1 Kernel Configuration"
+          version_of() {
+            local v
+            v=$(basename "$1" | sed -nE 's/^config-([0-9]+(\.[0-9]+)+).*/\1/p')
+            if [ -z "$v" ]; then
+              v=$(grep -m1 -E '^# Linux/[a-z0-9_]+ [0-9]' "$1" | awk '{print $3}')
+            fi
+            echo "$v"
+          }
+
+          # kernel.org naming: x.y.0 is published as x.y
+          tarball_url() {
+            local v="$1" tv major
+            tv="$v"
+            [[ "$v" =~ ^[0-9]+\.[0-9]+\.0$ ]] && tv="${v%.0}"
+            major="${v%%.*}"
+            echo "https://www.kernel.org/pub/linux/kernel/v${major}.x/linux-${tv}.tar.gz"
+          }
+
+          RYZEN_CONFIG=$(resolve_config ryzen9 t440p)
+          LENOVO_CONFIG=$(resolve_config t440p ryzen9)
+
+          build_target_json() {
+            # $1 id, $2 name, $3 config, $4 kcflags, $5 kcppflags, $6 arch_flags, $7 local_version
+            local ver url method tag
+            if [ -z "$3" ] || [ ! -f "$3" ]; then
+              echo "❌ Config not found for $2: '$3'" >&2
+              exit 1
+            fi
+            ver=$(version_of "$3")
+            if [ -z "$ver" ]; then
+              echo "❌ Cannot determine kernel version from $3" >&2
+              exit 1
+            fi
+            if [ -n "$INPUT_URL" ]; then
+              method="url"; url="$INPUT_URL"; tag=""
+            elif [ -n "$INPUT_TAG" ]; then
+              method="tag"; url=""; tag="$INPUT_TAG"
+            else
+              method="url"; url=$(tarball_url "$ver"); tag=""
+            fi
+            jq -cn --arg id "$1" --arg name "$2" --arg cfg "$3" --arg kc "$4" --arg kpp "$5" \
+              --arg af "$6" --arg lv "$7" --arg ver "$ver" --arg url "$url" --arg method "$method" --arg tag "$tag" \
+              '{id:$id,name:$name,config_path:$cfg,kcflags:$kc,kcppflags:$kpp,arch_flags:$af,local_version:$lv,
+                kernel_version:$ver,kernel_url:$url,download_method:$method,git_tag:$tag}'
+          }
+
+          RYZEN_JSON=$(build_target_json ryzen9 "AMD Ryzen 9" "$RYZEN_CONFIG" \
+            "-march=znver3 -O2 -pipe" "-march=znver3 -mtune=znver3" "-march=znver3 -O2 -pipe" "-ryzen9")
+          LENOVO_JSON=$(build_target_json t440p "Lenovo Thinkpad T440p" "$LENOVO_CONFIG" \
+            "-march=haswell -mtune=haswell -O2 -pipe" "-march=haswell -mtune=haswell" "-march=haswell -mtune=haswell -O2 -pipe" "-t440p")
 
           case "$TARGET" in
             "AMD Ryzen 9")
               MATRIX="[$RYZEN_JSON]"
+              CONFIG_CHOICE="$RYZEN_CONFIG"
               ;;
             "Lenovo Thinkpad T440p")
               MATRIX="[$LENOVO_JSON]"
+              CONFIG_CHOICE="$LENOVO_CONFIG"
               ;;
             "Both")
               MATRIX="[$RYZEN_JSON,$LENOVO_JSON]"
+              CONFIG_CHOICE="Both"
               ;;
             *)
               echo "❌ Invalid target: $TARGET"
@@ -211,24 +195,12 @@ jobs:
               ;;
           esac
 
-          # Determine download source & URL
-          if [ -n "$INPUT_URL" ]; then
-            DOWNLOAD_URL="$INPUT_URL"
-            DOWNLOAD_METHOD="url"
-          elif [ -n "$INPUT_TAG" ]; then
-            DOWNLOAD_METHOD="tag"
-            GIT_TAG="$INPUT_TAG"
-            DOWNLOAD_URL=""
-          else
-            DOWNLOAD_URL="https://www.kernel.org/pub/linux/kernel/v${MAJOR}.x/linux-${VERSION}.tar.gz"
-            DOWNLOAD_METHOD="url"
-          fi
+          KERNEL_TAG=$(echo "$MATRIX" | jq -r '[.[] | (if .git_tag != "" then .git_tag else .kernel_version end)] | unique | join(" / ")')
+          KERNEL_URL=$(echo "$MATRIX" | jq -r '[.[].kernel_url] | unique | join(" ")')
 
           echo "targets_matrix=$MATRIX" >> "$GITHUB_OUTPUT"
-          echo "download_method=$DOWNLOAD_METHOD" >> "$GITHUB_OUTPUT"
-          echo "kernel_url=$DOWNLOAD_URL" >> "$GITHUB_OUTPUT"
-          echo "git_tag=$GIT_TAG" >> "$GITHUB_OUTPUT"
-          echo "config_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "kernel_tag=$KERNEL_TAG" >> "$GITHUB_OUTPUT"
+          echo "kernel_url=$KERNEL_URL" >> "$GITHUB_OUTPUT"
           echo "config_choice=$CONFIG_CHOICE" >> "$GITHUB_OUTPUT"
           echo "ryzen_config=$RYZEN_CONFIG" >> "$GITHUB_OUTPUT"
           echo "lenovo_config=$LENOVO_CONFIG" >> "$GITHUB_OUTPUT"
@@ -236,93 +208,13 @@ jobs:
           echo "========================================="
           echo "🎯 Target Option      : $TARGET"
           echo "📄 Config Selected    : $SELECTED_CONFIG"
-          echo "🏷️ Kernel Version     : $VERSION (Major: $MAJOR)"
-          echo "⬇️ Download Method    : $DOWNLOAD_METHOD"
-          if [ "$DOWNLOAD_METHOD" = "url" ]; then
-            echo "📦 Kernel URL         : $DOWNLOAD_URL"
-          else
-            echo "🏷️ Git Tag            : $GIT_TAG"
-          fi
+          echo "🏷️ Kernel Version(s)  : $KERNEL_TAG"
+          echo "📦 Kernel URL(s)      : $KERNEL_URL"
           echo "AMD Ryzen 9 config    : $RYZEN_CONFIG"
           echo "Lenovo T440p config   : $LENOVO_CONFIG"
-          echo "📦 Targets Matrix     : $MATRIX"
+          echo "📦 Targets Matrix     :"
+          echo "$MATRIX" | jq .
           echo "========================================="
-
-      - name: 📥 Download kernel tarball
-        if: steps.matrix_config.outputs.download_method == 'url'
-        id: download_tarball
-        shell: bash
-        run: |
-          URL="${{ steps.matrix_config.outputs.kernel_url }}"
-          echo "⬇️ Downloading kernel package from $URL..."
-
-          FILENAME=$(basename "$URL")
-          case "$FILENAME" in
-            *.tar.gz)
-              EXT="gz"
-              ;;
-            *.tar.xz)
-              EXT="xz"
-              ;;
-            *)
-              echo "❌ Only .tar.gz or .tar.xz URLs are allowed: $URL"
-              exit 1
-              ;;
-          esac
-
-          if ! curl -fL --retry 3 --retry-all-errors -o "kernel_package.tar.${EXT}" "$URL"; then
-            if [ "$EXT" = "gz" ]; then
-              FALLBACK_URL="${URL%.tar.gz}.tar.xz"
-              echo "⚠️ .tar.gz failed, attempting fallback: $FALLBACK_URL"
-              curl -fL --retry 3 --retry-all-errors -o "kernel_package.tar.xz" "$FALLBACK_URL"
-              EXT="xz"
-            else
-              echo "❌ Failed to download kernel package from $URL"
-              exit 1
-            fi
-          fi
-
-          mkdir -p kernel_build
-          tar -xf "kernel_package.tar.${EXT}" \
-            -C kernel_build \
-            --strip-components=1
-
-      - name: 📥 Clone torvalds/linux repo
-        if: steps.matrix_config.outputs.download_method == 'tag'
-        id: clone_repo
-        run: |
-          git clone --depth 1 --branch "${{ steps.matrix_config.outputs.git_tag }}" \
-            https://github.com/torvalds/linux \
-            kernel_build
-
-      - name: 🔍 Verify kernel source
-        run: |
-          if [ ! -f kernel_build/Makefile ]; then
-            echo "❌ No valid kernel source available!"
-            echo "Provide either a valid kernel tarball URL or a valid Linux kernel tag."
-            exit 1
-          fi
-          echo "✅ Kernel source verified"
-
-      - name: 🏷️ Determine kernel source version
-        id: kernel_source
-        working-directory: kernel_build
-        run: |
-          if [ -n "${{ steps.matrix_config.outputs.git_tag }}" ]; then
-            TAG="${{ steps.matrix_config.outputs.git_tag }}"
-          else
-            TAG=$(make kernelversion)
-          fi
-
-          echo "kernel_tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "🏷️ Kernel source version: $TAG"
-
-      - name: 📤 Upload prepared clean kernel source artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: prepared-kernel-source
-          path: kernel_build/
-          include-hidden-files: true
 
   build:
     name: 🐧 2. Build (${{ matrix.target.name }})
@@ -359,11 +251,51 @@ jobs:
           sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
-      - name: 📥 Download prepared kernel source
-        uses: actions/download-artifact@v8
-        with:
-          name: prepared-kernel-source
-          path: kernel_build
+      - name: 📥 Download kernel tarball (version from config)
+        if: matrix.target.download_method == 'url'
+        shell: bash
+        run: |
+          URL="${{ matrix.target.kernel_url }}"
+          echo "⬇️ Kernel ${{ matrix.target.kernel_version }} for ${{ matrix.target.name }}: $URL"
+
+          case "$(basename "$URL")" in
+            *.tar.gz) EXT="gz" ;;
+            *.tar.xz) EXT="xz" ;;
+            *)
+              echo "❌ Only .tar.gz or .tar.xz URLs are allowed: $URL"
+              exit 1
+              ;;
+          esac
+
+          if ! curl -fL --retry 3 --retry-all-errors -o "kernel_package.tar.${EXT}" "$URL"; then
+            if [ "$EXT" = "gz" ]; then
+              FALLBACK_URL="${URL%.tar.gz}.tar.xz"
+              echo "⚠️ .tar.gz failed, attempting fallback: $FALLBACK_URL"
+              curl -fL --retry 3 --retry-all-errors -o "kernel_package.tar.xz" "$FALLBACK_URL"
+              EXT="xz"
+            else
+              echo "❌ Failed to download kernel package from $URL"
+              exit 1
+            fi
+          fi
+
+          mkdir -p kernel_build
+          tar -xf "kernel_package.tar.${EXT}" -C kernel_build --strip-components=1
+          rm -f "kernel_package.tar.${EXT}"
+
+      - name: 📥 Clone torvalds/linux repo
+        if: matrix.target.download_method == 'tag'
+        run: |
+          git clone --depth 1 --branch "${{ matrix.target.git_tag }}" \
+            https://github.com/torvalds/linux kernel_build
+
+      - name: 🔍 Verify kernel source
+        run: |
+          if [ ! -f kernel_build/Makefile ]; then
+            echo "❌ No valid kernel source available!"
+            exit 1
+          fi
+          echo "✅ Kernel source verified"
 
       - name: 🔧 Restore execution permissions on kernel scripts
         run: |
@@ -766,7 +698,7 @@ jobs:
 
             SRC_INFO="${KERNEL_TAG}"
             if [ -z "$SRC_INFO" ]; then
-              SRC_INFO="${KERNEL_URL:-$DEFAULT_URL}"
+              SRC_INFO="${KERNEL_URL}"
             fi
 
             MESSAGE=$(printf "%s\n" \
