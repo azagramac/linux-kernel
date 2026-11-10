@@ -54,6 +54,9 @@ jobs:
   validate-config:
     name: 🔍 1. Validate Kernel Config & Resolve Matrix
     runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+      options: -v /:/host
 
     outputs:
       kernel_tag: ${{ steps.validate.outputs.kernel_tag }}
@@ -63,15 +66,46 @@ jobs:
       download_url: ${{ steps.validate.outputs.kernel_url }}
 
     steps:
+      - name: 🛠️ Prepare container base tools & kconfig toolchain
+        run: |
+          apt-get update -qq
+          apt-get install -y \
+            build-essential \
+            gcc-14 \
+            g++-14 \
+            fakeroot \
+            bc \
+            bison \
+            flex \
+            zstd \
+            libdw-dev \
+            libelf-dev \
+            libssl-dev \
+            libncurses-dev \
+            dwarves \
+            debhelper \
+            rsync \
+            python3 \
+            curl \
+            jq \
+            patch \
+            kmod \
+            perl \
+            mawk \
+            tar \
+            xz-utils \
+            git \
+            procps \
+            sudo \
+            ccache \
+            lz4
+          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+          update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 10
-
-      - name: 🛠️ Install validation tools
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y bison flex libelf-dev bc jq python3 curl tar xz-utils
 
       - name: 🔍 Validate .config & resolve targets
         id: validate
@@ -264,51 +298,61 @@ jobs:
             echo "========================================="
 
             cp "$T_CFG" "$SRC_DIR/.config"
-            cp "$SRC_DIR/.config" "$SRC_DIR/.config.orig"
-
             chmod -R +x "$SRC_DIR/scripts/" || true
 
             set +e
-            make -C "$SRC_DIR" olddefconfig > "olddefconfig-${T_ID}.log" 2>&1
+            OLDDEF_OUT=$(make -C "$SRC_DIR" olddefconfig 2>&1)
             OLDDEF_EXIT=$?
             set -e
+
+            echo "$OLDDEF_OUT"
 
             DIFF_FILE="diff-${T_ID}.log"
             rm -f "$DIFF_FILE"
 
+            if [ -f "$SRC_DIR/scripts/diffconfig" ]; then
+              python3 "$SRC_DIR/scripts/diffconfig" "$T_CFG" "$SRC_DIR/.config" > "$DIFF_FILE" 2>/dev/null || true
+            else
+              diff -u <(grep -E '^[A-Z0-9_]+=' "$T_CFG" | sort) <(grep -E '^[A-Z0-9_]+=' "$SRC_DIR/.config" | sort) > "$DIFF_FILE" || true
+            fi
+
             if [ "$OLDDEF_EXIT" -ne 0 ]; then
               VALIDATION_FAILED=true
               SUMMARY_TABLE="${SUMMARY_TABLE}| ${T_NAME} | \`${T_VER}\` | \`${T_CFG}\` | ❌ Error en \`make olddefconfig\` |\n"
-              ERR_SNIP=$(tail -n 25 "olddefconfig-${T_ID}.log")
+              ERR_SNIP=$(tail -n 25 <<< "$OLDDEF_OUT")
               ERROR_DETAILS="${ERROR_DETAILS}\n### ❌ ${T_NAME}: Error ejecutando \`make olddefconfig\`\n\`\`\`text\n${ERR_SNIP}\n\`\`\`\n"
               TELEGRAM_ERRORS="${TELEGRAM_ERRORS}\n<b>[${T_NAME}]: Error en make olddefconfig</b>\n<pre>$(echo "$ERR_SNIP" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')</pre>\n"
-            else
-              if [ -f "$SRC_DIR/scripts/diffconfig" ]; then
-                python3 "$SRC_DIR/scripts/diffconfig" "$SRC_DIR/.config.orig" "$SRC_DIR/.config" > "$DIFF_FILE" 2>/dev/null || true
-              else
-                diff -u <(grep -E '^[A-Z0-9_]+=' "$SRC_DIR/.config.orig" | sort) <(grep -E '^[A-Z0-9_]+=' "$SRC_DIR/.config" | sort) > "$DIFF_FILE" || true
-              fi
+            elif echo "$OLDDEF_OUT" | grep -q "configuration written to \.config" || [ -s "$DIFF_FILE" ]; then
+              VALIDATION_FAILED=true
+              DIFF_COUNT=$(wc -l < "$DIFF_FILE" 2>/dev/null || echo "0")
+              SUMMARY_TABLE="${SUMMARY_TABLE}| ${T_NAME} | \`${T_VER}\` | \`${T_CFG}\` | ❌ Modificaciones detectadas (${DIFF_COUNT} opciones) |\n"
 
+              echo "❌ [MODIFICACIONES DETECTADAS] ${T_NAME} generó 'configuration written to .config' (${DIFF_COUNT} cambios en diffconfig):"
               if [ -s "$DIFF_FILE" ]; then
-                VALIDATION_FAILED=true
-                DIFF_COUNT=$(wc -l < "$DIFF_FILE")
-                SUMMARY_TABLE="${SUMMARY_TABLE}| ${T_NAME} | \`${T_VER}\` | \`${T_CFG}\` | ❌ Modificaciones detectadas (${DIFF_COUNT} opciones) |\n"
-
-                echo "❌ [MODIFICACIONES DETECTADAS] ${T_NAME} tiene ${DIFF_COUNT} cambios respecto a olddefconfig:"
                 cat "$DIFF_FILE"
-
-                DIFF_PREVIEW=$(head -n 40 "$DIFF_FILE")
-                ERROR_DETAILS="${ERROR_DETAILS}\n### ⚠️ ${T_NAME}: Modificaciones detectadas (${DIFF_COUNT} cambios)\n<details open><summary><b>Ver diferencias (diffconfig)</b></summary>\n\n\`\`\`text\n${DIFF_PREVIEW}\n\`\`\`\n</details>\n"
-
-                TG_SNIP=$(head -n 25 "$DIFF_FILE" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-                if [ "$DIFF_COUNT" -gt 25 ]; then
-                  TG_SNIP="${TG_SNIP}\n... (+ $((DIFF_COUNT - 25)) opciones adicionales)"
-                fi
-                TELEGRAM_ERRORS="${TELEGRAM_ERRORS}\n<b>[${T_NAME}]: ${DIFF_COUNT} cambios en .config</b>\n<pre>${TG_SNIP}</pre>\n"
               else
-                SUMMARY_TABLE="${SUMMARY_TABLE}| ${T_NAME} | \`${T_VER}\` | \`${T_CFG}\` | ✅ Sincronizado (0 cambios) |\n"
-                echo "✅ [OK] Config para $T_NAME está 100% sincronizado con olddefconfig."
+                echo "$OLDDEF_OUT" | grep -A 5 -B 2 "configuration written to \.config" || true
               fi
+
+              DIFF_PREVIEW=""
+              if [ -s "$DIFF_FILE" ]; then
+                DIFF_PREVIEW=$(head -n 40 "$DIFF_FILE")
+              else
+                DIFF_PREVIEW=$(tail -n 25 <<< "$OLDDEF_OUT")
+              fi
+
+              ERROR_DETAILS="${ERROR_DETAILS}\n### ⚠️ ${T_NAME}: Modificaciones detectadas en .config\n<details open><summary><b>Ver diferencias (diffconfig / olddefconfig)</b></summary>\n\n\`\`\`text\n${DIFF_PREVIEW}\n\`\`\`\n</details>\n"
+
+              TG_SNIP=$(head -n 25 "$DIFF_FILE" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+              if [ -z "$TG_SNIP" ]; then
+                TG_SNIP=$(tail -n 15 <<< "$OLDDEF_OUT" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+              elif [ "$DIFF_COUNT" -gt 25 ]; then
+                TG_SNIP="${TG_SNIP}\n... (+ $((DIFF_COUNT - 25)) opciones adicionales)"
+              fi
+              TELEGRAM_ERRORS="${TELEGRAM_ERRORS}\n<b>[${T_NAME}]: Modificaciones en .config</b>\n<pre>${TG_SNIP}</pre>\n"
+            else
+              SUMMARY_TABLE="${SUMMARY_TABLE}| ${T_NAME} | \`${T_VER}\` | \`${T_CFG}\` | ✅ Sincronizado (# No change to .config) |\n"
+              echo "✅ [OK] Config para $T_NAME está 100% sincronizado con olddefconfig (# No change to .config)."
             fi
           done
 
@@ -330,15 +374,15 @@ jobs:
               echo "---"
               echo "💡 **Solución:** Revisa las diferencias mostradas arriba, actualiza tu archivo \`.config\` en el repositorio para la versión seleccionada y haz commit antes de volver a ejecutar."
             else
-              echo "> ✅ **Validación EXITOSA:** Todas las configuraciones seleccionadas coinciden exactamente con los requerimientos del kernel. Procediendo con el Job 2 (Preparación de entorno y compilación)."
+              echo "> ✅ **Validación EXITOSA (# No change to .config):** Todas las configuraciones seleccionadas coinciden exactamente con los requerimientos del kernel. Procediendo con el Job 2 (Preparación de entorno y compilación)."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
           # -------------------------------------------------------------
-          # Send Telegram alert and abort if validation failed
+          # Telegram notification & workflow flow control
           # -------------------------------------------------------------
+          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [ "$VALIDATION_FAILED" = "true" ]; then
-            RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHATID" ]; then
               TG_MSG=$(printf "%s\n" \
                 "<b>🐧 Linux Kernel: Validación de Config Fallida 🛑</b>" \
@@ -346,9 +390,9 @@ jobs:
                 "🎯 <b>Objetivo(s):</b> ${TARGET}" \
                 "🏷️ <b>Versión:</b> ${KERNEL_TAG}" \
                 "⚠️ <b>Motivo:</b>" \
-                "<code>make olddefconfig</code> detectó que el archivo .config tiene discrepancias con el kernel base. Se aborta la ejecución para evitar un build inconsistente." \
+                "<code>make olddefconfig</code> detectó modificaciones (<code># configuration written to .config</code>). Se aborta la ejecución para evitar un build inconsistente." \
                 "" \
-                "📋 <b>Diferencias detectadas:</b>" \
+                "📋 <b>Diferencias detectadas (diffconfig):</b>" \
                 "$(printf "%b" "$TELEGRAM_ERRORS")" \
                 "" \
                 "🔗 <a href=\"${RUN_URL}\">Ver detalles en GitHub Actions</a>")
@@ -363,9 +407,28 @@ jobs:
 
             echo "❌ [ABORT] Validación de configuración fallida. Cancelando compilación."
             exit 1
-          fi
+          else
+            if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHATID" ]; then
+              TG_OK_MSG=$(printf "%s\n" \
+                "<b>🐧 Linux Kernel: Configuración Verificada ✅</b>" \
+                "" \
+                "🎯 <b>Objetivo(s):</b> ${TARGET}" \
+                "🏷️ <b>Versión:</b> ${KERNEL_TAG}" \
+                "📄 <b>Resultado:</b> <code># No change to .config</code>" \
+                "🚀 <i>Iniciando compilación en contenedor Debian 13 (Trixie)...</i>" \
+                "" \
+                "🔗 <a href=\"${RUN_URL}\">Ver ejecución en GitHub Actions</a>")
 
-          echo "✅ Validación de configuración superada con éxito."
+              curl -s -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+                --data-urlencode "chat_id=${TELEGRAM_CHATID}" \
+                --data-urlencode "parse_mode=HTML" \
+                --data-urlencode "text=$TG_OK_MSG" \
+                >/dev/null 2>&1 || true
+            fi
+
+            echo "✅ Validación de configuración superada con éxito (# No change to .config)."
+          fi
 
   build-kernel:
     name: 🐧 2. Build (${{ matrix.target.name }})
@@ -383,8 +446,36 @@ jobs:
       - name: 🛠️ Prepare container environment & install build toolchain
         run: |
           apt-get update -qq
-          apt-get install -y git sudo curl tar xz-utils procps build-essential gcc-14 g++-14 fakeroot bc bison flex \
-            libdw-dev libelf-dev libssl-dev zstd libncurses-dev dwarves debhelper rsync python3 ccache jq kmod lz4
+          apt-get install -y \
+            build-essential \
+            gcc-14 \
+            g++-14 \
+            fakeroot \
+            bc \
+            bison \
+            flex \
+            zstd \
+            libdw-dev \
+            libelf-dev \
+            libssl-dev \
+            libncurses-dev \
+            dwarves \
+            debhelper \
+            rsync \
+            python3 \
+            curl \
+            jq \
+            patch \
+            kmod \
+            perl \
+            mawk \
+            tar \
+            xz-utils \
+            git \
+            procps \
+            sudo \
+            ccache \
+            lz4
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 

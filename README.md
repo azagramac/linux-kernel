@@ -36,7 +36,7 @@ system resources, and provides the fundamental services for all other software.
 
 ```mermaid
 flowchart TD
-    subgraph Job1["🔍 1. Validate Kernel Config & Resolve Matrix (Ubuntu Runner)"]
+    subgraph Job1["🔍 1. Validate Kernel Config & Resolve Matrix (debian:trixie Container)"]
         direction TB
         A1["🎯 Target & Config Selection<br/>(Ryzen 9 / T440p / Both)"] --> A2["📦 Download Kernel Source & Kconfig Tools"]
         A2 --> A3["⚙️ Execute make olddefconfig & scripts/diffconfig"]
