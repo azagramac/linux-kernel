@@ -18,16 +18,9 @@ on:
         type: choice
         options:
           - 'stable'
-          - 'configs/stable/config-7.3.1-ryzen9-debian13'
-          - 'configs/stable/config-7.3.1-t440p-debian13'
-          - 'configs/archive/config-7.3-ryzen9-debian13'
-          - 'configs/archive/config-7.3-t440p-debian13'
-          - 'configs/archive/config-6.19.14-ryzen9-debian13'
-          - 'configs/archive/config-6.19.14-t440p-debian13'
-          - 'configs/testing/config-7.2.9-debian13'
-          - 'configs/testing/config-7.2.8-debian13'
-          - 'configs/testing/config-6.19.14-debian13'
           - 'custom'
+          - 'configs/stable/config-7.3.3-ryzen9-debian13'
+          - 'configs/stable/config-7.3.3-t440p-debian13'
         default: 'stable'
       custom_config:
         description: '⚙️ Custom config path (used if config is "custom")'
@@ -58,36 +51,36 @@ env:
   KERNEL_TAG: ${{ inputs.tag }}
 
 jobs:
-  prepare:
-    name: 🔍 1. Prepare Environment & Config Resolution
+  validate-config:
+    name: 🔍 1. Validate Kernel Config & Resolve Matrix
     runs-on: ubuntu-latest
-    container:
-      image: debian:trixie
 
     outputs:
-      kernel_tag: ${{ steps.matrix_config.outputs.kernel_tag }}
-      targets_matrix: ${{ steps.matrix_config.outputs.targets_matrix }}
+      kernel_tag: ${{ steps.validate.outputs.kernel_tag }}
+      targets_matrix: ${{ steps.validate.outputs.targets_matrix }}
       target_choice: ${{ inputs.target }}
-      config_choice: ${{ steps.matrix_config.outputs.config_choice }}
-      ryzen_config: ${{ steps.matrix_config.outputs.ryzen_config }}
-      lenovo_config: ${{ steps.matrix_config.outputs.lenovo_config }}
-      download_url: ${{ steps.matrix_config.outputs.kernel_url }}
+      config_choice: ${{ steps.validate.outputs.config_choice }}
+      download_url: ${{ steps.validate.outputs.kernel_url }}
 
     steps:
-      - name: 🛠️ Prepare container base tools
-        run: |
-          apt-get update -qq
-          apt-get install -y git sudo curl tar xz-utils procps jq
-
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 10
 
-      - name: 🎯 Determine build targets matrix & kernel version from config
-        id: matrix_config
-        shell: bash
+      - name: 🛠️ Install validation tools
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bison flex libelf-dev bc jq python3 curl tar xz-utils
+
+      - name: 🔍 Validate .config & resolve targets
+        id: validate
+        shell: bash
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHATID: ${{ secrets.TELEGRAM_CHATID }}
+        run: |
+          set -e
           TARGET="${{ inputs.target }}"
           SELECTED_CONFIG="${{ inputs.config }}"
           CUSTOM_CONFIG="${{ inputs.custom_config }}"
@@ -99,7 +92,7 @@ jobs:
           fi
           [ -z "$SELECTED_CONFIG" ] && SELECTED_CONFIG="stable"
 
-          # Normalize a user-provided path to an existing file in the repo
+          # Normalize user-provided path
           if [ "$SELECTED_CONFIG" != "stable" ]; then
             if [ -f "$SELECTED_CONFIG" ]; then :
             elif [ -f "configs/$SELECTED_CONFIG" ]; then SELECTED_CONFIG="configs/$SELECTED_CONFIG"
@@ -123,8 +116,7 @@ jobs:
             fi
           }
 
-          # Kernel version from file name (config-7.3.1-ryzen9-... -> 7.3.1),
-          # fallback to header "# Linux/x86 7.3.1 Kernel Configuration"
+          # Extract kernel version from filename or config header
           version_of() {
             local v
             v=$(basename "$1" | sed -nE 's/^config-([0-9]+(\.[0-9]+)+).*/\1/p')
@@ -134,7 +126,7 @@ jobs:
             echo "$v"
           }
 
-          # kernel.org naming: x.y.0 is published as x.y
+          # Tarball URL builder
           tarball_url() {
             local v="$1" tv major
             tv="$v"
@@ -147,7 +139,6 @@ jobs:
           LENOVO_CONFIG=$(resolve_config t440p ryzen9)
 
           build_target_json() {
-            # $1 id, $2 name, $3 config, $4 kcflags, $5 kcppflags, $6 arch_flags, $7 local_version
             local ver url method tag
             if [ -z "$3" ] || [ ! -f "$3" ]; then
               echo "❌ Config not found for $2: '$3'" >&2
@@ -202,37 +193,200 @@ jobs:
           echo "kernel_tag=$KERNEL_TAG" >> "$GITHUB_OUTPUT"
           echo "kernel_url=$KERNEL_URL" >> "$GITHUB_OUTPUT"
           echo "config_choice=$CONFIG_CHOICE" >> "$GITHUB_OUTPUT"
-          echo "ryzen_config=$RYZEN_CONFIG" >> "$GITHUB_OUTPUT"
-          echo "lenovo_config=$LENOVO_CONFIG" >> "$GITHUB_OUTPUT"
 
           echo "========================================="
           echo "🎯 Target Option      : $TARGET"
           echo "📄 Config Selected    : $SELECTED_CONFIG"
           echo "🏷️ Kernel Version(s)  : $KERNEL_TAG"
-          echo "📦 Kernel URL(s)      : $KERNEL_URL"
-          echo "AMD Ryzen 9 config    : $RYZEN_CONFIG"
-          echo "Lenovo T440p config   : $LENOVO_CONFIG"
           echo "📦 Targets Matrix     :"
           echo "$MATRIX" | jq .
           echo "========================================="
 
-  build:
+          # -------------------------------------------------------------
+          # Download Kernel source trees for validation
+          # -------------------------------------------------------------
+          mkdir -p val_sources
+          for item in $(echo "$MATRIX" | jq -r '.[] | @base64'); do
+            _jq() { echo "$item" | base64 --decode | jq -r "$1"; }
+            V_VER=$(_jq '.kernel_version')
+            V_METHOD=$(_jq '.download_method')
+            V_URL=$(_jq '.kernel_url')
+            V_TAG=$(_jq '.git_tag')
+
+            SRC_DIR="val_sources/linux-${V_VER}"
+            if [ ! -d "$SRC_DIR" ]; then
+              echo "⬇️ Downloading kernel source for validation: ${V_VER}..."
+              mkdir -p "$SRC_DIR"
+              if [ "$V_METHOD" = "tag" ]; then
+                git clone --depth 1 --branch "$V_TAG" https://github.com/torvalds/linux "$SRC_DIR"
+              else
+                case "$(basename "$V_URL")" in
+                  *.tar.gz) EXT="gz" ;;
+                  *.tar.xz) EXT="xz" ;;
+                  *) EXT="gz" ;;
+                esac
+                ARCHIVE="kernel_pkg_${V_VER}.tar.${EXT}"
+                if ! curl -fL --retry 3 --retry-all-errors -o "$ARCHIVE" "$V_URL"; then
+                  if [ "$EXT" = "gz" ]; then
+                    FALLBACK="${V_URL%.tar.gz}.tar.xz"
+                    echo "⚠️ .tar.gz failed, trying fallback: $FALLBACK"
+                    curl -fL --retry 3 --retry-all-errors -o "kernel_pkg_${V_VER}.tar.xz" "$FALLBACK"
+                    ARCHIVE="kernel_pkg_${V_VER}.tar.xz"
+                  else
+                    echo "❌ Failed to download kernel from $V_URL"
+                    exit 1
+                  fi
+                fi
+                tar -xf "$ARCHIVE" -C "$SRC_DIR" --strip-components=1
+                rm -f "$ARCHIVE"
+              fi
+            fi
+          done
+
+          # -------------------------------------------------------------
+          # Perform olddefconfig check and diff detection for each target
+          # -------------------------------------------------------------
+          VALIDATION_FAILED=false
+          SUMMARY_TABLE=""
+          ERROR_DETAILS=""
+          TELEGRAM_ERRORS=""
+
+          for item in $(echo "$MATRIX" | jq -r '.[] | @base64'); do
+            _jq() { echo "$item" | base64 --decode | jq -r "$1"; }
+            T_ID=$(_jq '.id')
+            T_NAME=$(_jq '.name')
+            T_CFG=$(_jq '.config_path')
+            T_VER=$(_jq '.kernel_version')
+            SRC_DIR="val_sources/linux-${T_VER}"
+
+            echo "========================================="
+            echo "🔍 Testing olddefconfig for $T_NAME ($T_CFG)..."
+            echo "========================================="
+
+            cp "$T_CFG" "$SRC_DIR/.config"
+            cp "$SRC_DIR/.config" "$SRC_DIR/.config.orig"
+
+            chmod -R +x "$SRC_DIR/scripts/" || true
+
+            set +e
+            make -C "$SRC_DIR" olddefconfig > "olddefconfig-${T_ID}.log" 2>&1
+            OLDDEF_EXIT=$?
+            set -e
+
+            DIFF_FILE="diff-${T_ID}.log"
+            rm -f "$DIFF_FILE"
+
+            if [ "$OLDDEF_EXIT" -ne 0 ]; then
+              VALIDATION_FAILED=true
+              SUMMARY_TABLE="${SUMMARY_TABLE}| ${T_NAME} | \`${T_VER}\` | \`${T_CFG}\` | ❌ Error en \`make olddefconfig\` |\n"
+              ERR_SNIP=$(tail -n 25 "olddefconfig-${T_ID}.log")
+              ERROR_DETAILS="${ERROR_DETAILS}\n### ❌ ${T_NAME}: Error ejecutando \`make olddefconfig\`\n\`\`\`text\n${ERR_SNIP}\n\`\`\`\n"
+              TELEGRAM_ERRORS="${TELEGRAM_ERRORS}\n<b>[${T_NAME}]: Error en make olddefconfig</b>\n<pre>$(echo "$ERR_SNIP" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')</pre>\n"
+            else
+              if [ -f "$SRC_DIR/scripts/diffconfig" ]; then
+                python3 "$SRC_DIR/scripts/diffconfig" "$SRC_DIR/.config.orig" "$SRC_DIR/.config" > "$DIFF_FILE" 2>/dev/null || true
+              else
+                diff -u <(grep -E '^[A-Z0-9_]+=' "$SRC_DIR/.config.orig" | sort) <(grep -E '^[A-Z0-9_]+=' "$SRC_DIR/.config" | sort) > "$DIFF_FILE" || true
+              fi
+
+              if [ -s "$DIFF_FILE" ]; then
+                VALIDATION_FAILED=true
+                DIFF_COUNT=$(wc -l < "$DIFF_FILE")
+                SUMMARY_TABLE="${SUMMARY_TABLE}| ${T_NAME} | \`${T_VER}\` | \`${T_CFG}\` | ❌ Modificaciones detectadas (${DIFF_COUNT} opciones) |\n"
+
+                echo "❌ [MODIFICACIONES DETECTADAS] ${T_NAME} tiene ${DIFF_COUNT} cambios respecto a olddefconfig:"
+                cat "$DIFF_FILE"
+
+                DIFF_PREVIEW=$(head -n 40 "$DIFF_FILE")
+                ERROR_DETAILS="${ERROR_DETAILS}\n### ⚠️ ${T_NAME}: Modificaciones detectadas (${DIFF_COUNT} cambios)\n<details open><summary><b>Ver diferencias (diffconfig)</b></summary>\n\n\`\`\`text\n${DIFF_PREVIEW}\n\`\`\`\n</details>\n"
+
+                TG_SNIP=$(head -n 25 "$DIFF_FILE" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+                if [ "$DIFF_COUNT" -gt 25 ]; then
+                  TG_SNIP="${TG_SNIP}\n... (+ $((DIFF_COUNT - 25)) opciones adicionales)"
+                fi
+                TELEGRAM_ERRORS="${TELEGRAM_ERRORS}\n<b>[${T_NAME}]: ${DIFF_COUNT} cambios en .config</b>\n<pre>${TG_SNIP}</pre>\n"
+              else
+                SUMMARY_TABLE="${SUMMARY_TABLE}| ${T_NAME} | \`${T_VER}\` | \`${T_CFG}\` | ✅ Sincronizado (0 cambios) |\n"
+                echo "✅ [OK] Config para $T_NAME está 100% sincronizado con olddefconfig."
+              fi
+            fi
+          done
+
+          # -------------------------------------------------------------
+          # Generate GitHub Step Summary
+          # -------------------------------------------------------------
+          {
+            echo "# 🔍 Validación de Configuración del Kernel"
+            echo
+            echo "| Dispositivo | Versión Kernel | Configuración | Estado |"
+            echo "| :--- | :--- | :--- | :--- |"
+            printf "%b" "$SUMMARY_TABLE"
+            echo
+            if [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "> 🛑 **Validación FALLIDA:** Se detectaron modificaciones automáticas con \`make olddefconfig\` o errores de sintaxis. El workflow ha sido abortado para no compilar con configuraciones imprevistas."
+              echo
+              printf "%b" "$ERROR_DETAILS"
+              echo
+              echo "---"
+              echo "💡 **Solución:** Revisa las diferencias mostradas arriba, actualiza tu archivo \`.config\` en el repositorio para la versión seleccionada y haz commit antes de volver a ejecutar."
+            else
+              echo "> ✅ **Validación EXITOSA:** Todas las configuraciones seleccionadas coinciden exactamente con los requerimientos del kernel. Procediendo con el Job 2 (Preparación de entorno y compilación)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # -------------------------------------------------------------
+          # Send Telegram alert and abort if validation failed
+          # -------------------------------------------------------------
+          if [ "$VALIDATION_FAILED" = "true" ]; then
+            RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHATID" ]; then
+              TG_MSG=$(printf "%s\n" \
+                "<b>🐧 Linux Kernel: Validación de Config Fallida 🛑</b>" \
+                "" \
+                "🎯 <b>Objetivo(s):</b> ${TARGET}" \
+                "🏷️ <b>Versión:</b> ${KERNEL_TAG}" \
+                "⚠️ <b>Motivo:</b>" \
+                "<code>make olddefconfig</code> detectó que el archivo .config tiene discrepancias con el kernel base. Se aborta la ejecución para evitar un build inconsistente." \
+                "" \
+                "📋 <b>Diferencias detectadas:</b>" \
+                "$(printf "%b" "$TELEGRAM_ERRORS")" \
+                "" \
+                "🔗 <a href=\"${RUN_URL}\">Ver detalles en GitHub Actions</a>")
+
+              curl -s -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+                --data-urlencode "chat_id=${TELEGRAM_CHATID}" \
+                --data-urlencode "parse_mode=HTML" \
+                --data-urlencode "text=$TG_MSG" \
+                >/dev/null 2>&1 || true
+            fi
+
+            echo "❌ [ABORT] Validación de configuración fallida. Cancelando compilación."
+            exit 1
+          fi
+
+          echo "✅ Validación de configuración superada con éxito."
+
+  build-kernel:
     name: 🐧 2. Build (${{ matrix.target.name }})
-    needs: prepare
+    needs: validate-config
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJson(needs.prepare.outputs.targets_matrix) }}
+        target: ${{ fromJson(needs.validate-config.outputs.targets_matrix) }}
     container:
       image: debian:trixie
       options: -v /:/host
 
     steps:
-      - name: 🛠️ Prepare container base tools
+      - name: 🛠️ Prepare container environment & install build toolchain
         run: |
           apt-get update -qq
-          apt-get install -y git sudo curl tar xz-utils procps
+          apt-get install -y git sudo curl tar xz-utils procps build-essential gcc-14 g++-14 fakeroot bc bison flex \
+            libdw-dev libelf-dev libssl-dev zstd libncurses-dev dwarves debhelper rsync python3 ccache jq kmod lz4
+          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+          update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
@@ -244,14 +398,7 @@ jobs:
                  /host/opt/ghc \
                  /host/opt/hostedtoolcache || true
 
-      - name: ⚙️ Install build dependencies
-        run: |
-          sudo apt install -y git build-essential gcc-14 g++-14 fakeroot bc bison flex libdw-dev libelf-dev libssl-dev zstd \
-            libncurses-dev dwarves debhelper rsync python3 ccache curl jq kmod lz4
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
-
-      - name: 📥 Download kernel tarball (version from config)
+      - name: 📥 Download kernel source (version from config)
         if: matrix.target.download_method == 'url'
         shell: bash
         run: |
@@ -302,7 +449,7 @@ jobs:
           chmod -R +x kernel_build/scripts/
           find kernel_build -type f \( -name "*.sh" -o -name "*.pl" -o -name "*.py" \) -exec chmod +x {} +
 
-      - name: 📄 Apply kernel config for target
+      - name: 📄 Apply verified kernel config
         shell: bash
         run: |
           CONFIG_INPUT="${{ matrix.target.config_path }}"
@@ -331,7 +478,7 @@ jobs:
           chmod -R +x scripts/
           find . -type f \( -name "*.sh" -o -name "*.pl" -o -name "*.py" \) -exec chmod +x {} +
 
-          echo "🔧 Applying configuration and running olddefconfig..."
+          echo "🔧 Running olddefconfig to prepare build tree headers..."
           if ! make olddefconfig 2>&1 | tee ../build-config.log; then
             mkdir -p ../artifacts
             cp ../build-config.log "../build-error-${{ matrix.target.id }}.log"
@@ -354,7 +501,7 @@ jobs:
             echo "⚠️ Warning: MOK_SIGNING_PEM secret is empty or not configured"
           fi
 
-      - name: 🐧 Build kernel
+      - name: 🐧 Build kernel deb packages
         working-directory: kernel_build
         shell: bash
         run: |
@@ -436,6 +583,16 @@ jobs:
 
               echo
               cat "$ERROR_LOG"
+
+              {
+                echo "## ❌ Fallo en Compilación: $TARGET"
+                echo "- **Código de salida:** \`$BUILD_EXIT\`"
+                echo
+                echo "### 📋 Posibles causas raíz:"
+                echo '```text'
+                head -n 40 "$ERROR_LOG"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
 
               exit "$BUILD_EXIT"
           fi
@@ -532,6 +689,29 @@ jobs:
               echo "$FILES"
               echo '```'
             } > "artifacts/release-section-${{ matrix.target.id }}.md"
+
+            # Step Summary
+            {
+              echo "## 🐧 Compilación: ${{ matrix.target.name }}"
+              echo "- **Versión del Kernel:** \`${VERSION}\`"
+              echo "- **Arquitectura:** \`${ARCH}\`"
+              echo "- **Distribución:** \`${DIST}\`"
+              echo "- **KCFLAGS:** \`${{ matrix.target.kcflags }}\`"
+              echo "- **KCPPFLAGS:** \`${{ matrix.target.kcppflags }}\`"
+              echo "- **Configuración:** \`${{ matrix.target.config_path }}\`"
+              echo
+              echo "### 📦 Paquetes Debian generados:"
+              echo "| Paquete | Tamaño | Checksum SHA-256 |"
+              echo "| :--- | :--- | :--- |"
+              for deb in artifacts/*.deb; do
+                if [ -f "$deb" ]; then
+                  pkg_name=$(basename "$deb")
+                  pkg_size=$(ls -lh "$deb" | awk '{print $5}')
+                  pkg_sha=$(sha256sum "$deb" | awk '{print $1}')
+                  echo "| \`${pkg_name}\` | ${pkg_size} | \`${pkg_sha}\` |"
+                fi
+              done
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
           echo "========================================="
@@ -548,7 +728,7 @@ jobs:
 
   release:
     name: 🚀 3. Publish Unified Release
-    needs: [prepare, build]
+    needs: [validate-config, build-kernel]
     runs-on: ubuntu-latest
     if: success()
 
@@ -573,17 +753,16 @@ jobs:
           GIT_CHANGELOG=$(git log -n 10 --pretty=format:"* %h - %s (%an, %cr)" 2>/dev/null || echo " * Custom built Linux kernel.")
 
           {
-            echo "## 🐧 Linux Kernel Release (${{ needs.prepare.outputs.kernel_tag }})"
-            if [ "${{ needs.prepare.outputs.target_choice }}" = "Both" ]; then
+            echo "## 🐧 Linux Kernel Release (${{ needs.validate-config.outputs.kernel_tag }})"
+            if [ "${{ needs.validate-config.outputs.target_choice }}" = "Both" ]; then
               echo "**Target Selection:** Both (AMD Ryzen 9 & Lenovo Thinkpad T440p)"
             else
-              echo "**Target Selection:** ${{ needs.prepare.outputs.target_choice }}"
-              echo "**Config Selection:** \`${{ needs.prepare.outputs.config_choice }}\`"
+              echo "**Target Selection:** ${{ needs.validate-config.outputs.target_choice }}"
+              echo "**Config Selection:** \`${{ needs.validate-config.outputs.config_choice }}\`"
             fi
             echo
             echo "---"
             echo
-
             for section in all-artifacts/release-section-*.md; do
               if [ -f "$section" ]; then
                 cat "$section"
@@ -592,7 +771,6 @@ jobs:
                 echo
               fi
             done
-
             echo "### 🔄 Git ChangeLog:"
             echo "$GIT_CHANGELOG"
           } > release.md
@@ -601,11 +779,19 @@ jobs:
           cat release.md >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
+          # Release Step Summary
+          {
+            echo "# 🚀 Publicación de Release Oficial"
+            echo "- **Tag:** [kernel-${{ github.run_number }}](https://github.com/${{ github.repository }}/releases/tag/kernel-${{ github.run_number }})"
+            echo "- **Versión del Kernel:** ${{ needs.validate-config.outputs.kernel_tag }}"
+            echo "- **Objetivo(s):** ${{ needs.validate-config.outputs.target_choice }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: 🚀 Upload Unified GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: kernel-${{ github.run_number }}
-          name: "Kernel ${{ needs.prepare.outputs.kernel_tag }} (Build #${{ github.run_number }})"
+          name: "Kernel ${{ needs.validate-config.outputs.kernel_tag }} (Build #${{ github.run_number }})"
           body: ${{ steps.release_body.outputs.body }}
           files: |
             all-artifacts/*.deb
@@ -619,8 +805,8 @@ jobs:
 
   notify-telegram:
     name: 📤 4. Telegram Notification
-    needs: [prepare, build, release]
-    if: always()
+    needs: [validate-config, build-kernel, release]
+    if: always() && needs.validate-config.result == 'success'
     runs-on: ubuntu-latest
 
     steps:
@@ -636,12 +822,12 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHATID: ${{ secrets.TELEGRAM_CHATID }}
-          BUILD_STATUS: ${{ needs.build.result }}
+          BUILD_STATUS: ${{ needs.build-kernel.result }}
           RELEASE_STATUS: ${{ needs.release.result }}
-          KERNEL_TAG: ${{ needs.prepare.outputs.kernel_tag }}
-          TARGET_CHOICE: ${{ needs.prepare.outputs.target_choice }}
-          CONFIG_CHOICE: ${{ needs.prepare.outputs.config_choice }}
-          KERNEL_URL: ${{ needs.prepare.outputs.download_url }}
+          KERNEL_TAG: ${{ needs.validate-config.outputs.kernel_tag }}
+          TARGET_CHOICE: ${{ needs.validate-config.outputs.target_choice }}
+          CONFIG_CHOICE: ${{ needs.validate-config.outputs.config_choice }}
+          KERNEL_URL: ${{ needs.validate-config.outputs.download_url }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"

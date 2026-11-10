@@ -35,53 +35,61 @@ system resources, and provides the fundamental services for all other software.
 ## 📌 Project Architecture & CI/CD Workflow
 
 ```mermaid
-graph TD
-    subgraph Job1["🔍 1. Prepare Environment & Source (debian:trixie)"]
-        A1["📦 Kernel Source<br/>(kernel.org tarball / git tag)"] --> A3["⚙️ Extract & Verify Source"]
-        A2["🎯 Target Selection<br/>(Ryzen 9 / T440p / Both)"] --> A4["🧩 Build Targets Matrix<br/>(znver3 / haswell)"]
-        A3 --> A5["📤 Upload Clean Source Artifact"]
+flowchart TD
+    subgraph Job1["🔍 1. Validate Kernel Config & Resolve Matrix (Ubuntu Runner)"]
+        direction TB
+        A1["🎯 Target & Config Selection<br/>(Ryzen 9 / T440p / Both)"] --> A2["📦 Download Kernel Source & Kconfig Tools"]
+        A2 --> A3["⚙️ Execute make olddefconfig & scripts/diffconfig"]
+        A3 --> A4{"Changes in .config?"}
+        A4 -- "Yes (Modifications detected)" --> A5["📤 Telegram: Alert with Diff<br/>❌ Detailed Step Summary<br/>🛑 Abort Execution"]
+        A4 -- "No (100% Synchronized)" --> A6["✅ Config Validated<br/>🧩 Export Build Targets Matrix"]
     end
 
-    subgraph Job2["🐧 2. Matrix Build in Parallel (debian:trixie)"]
+    subgraph Job2["🐧 2. Matrix Build in Parallel (debian:trixie Container)"]
         direction TB
         subgraph MatrixRyzen["🖥️ AMD Ryzen 9"]
-            B1_R["📄 config-*-ryzen9<br/>+ make olddefconfig"]
-            B2_R["🔑 Inject MOK Key<br/>(Secure Boot Signing)"]
-            B3_R["🐧 make bindeb-pkg<br/>(KCFLAGS='-march=znver3 -O2')"]
-            B1_R --> B2_R --> B3_R
+            B1_R["🛠️ Toolchain gcc-14 + debian:trixie"]
+            B2_R["📄 Apply Verified .config"]
+            B3_R["🔑 Inject MOK Key (Secure Boot)"]
+            B4_R["🐧 make bindeb-pkg<br/>KCFLAGS='-march=znver3 -O2'"]
+            B1_R --> B2_R --> B3_R --> B4_R
         end
         subgraph MatrixT440p["💻 Lenovo ThinkPad T440p"]
-            B1_L["📄 config-*-t440p<br/>+ make olddefconfig"]
-            B2_L["🔑 Inject MOK Key<br/>(Secure Boot Signing)"]
-            B3_L["🐧 make bindeb-pkg<br/>(KCFLAGS='-march=haswell -O2')"]
-            B1_L --> B2_L --> B3_L
+            B1_L["🛠️ Toolchain gcc-14 + debian:trixie"]
+            B2_L["📄 Apply Verified .config"]
+            B3_L["🔑 Inject MOK Key (Secure Boot)"]
+            B4_L["🐧 make bindeb-pkg<br/>KCFLAGS='-march=haswell -O2'"]
+            B1_L --> B2_L --> B3_L --> B4_L
         end
     end
 
     subgraph Job3["🚀 3. Publish Unified Release (GitHub Runner)"]
+        direction TB
         C1["📥 Download & Merge Artifacts<br/>(Ryzen 9 & T440p .deb packages)"]
-        C2["📝 Generate Unified Release Notes<br/>+ SHA256 Checksums"]
-        C3["🏷️ GitHub Release<br/>(tag: kernel-RUN_NUMBER)"]
+        C2["📝 Generate Unified Release Notes<br/>+ SHA256 Checksums & Step Summary"]
+        C3["🏷️ Publish GitHub Release<br/>(tag: kernel-RUN_NUMBER)"]
         C1 --> C2 --> C3
     end
 
-    subgraph Job4["📤 4. Telegram Notification"]
-        D1["📲 Send Status, .deb List<br/>& Error Logs"]
+    subgraph Job4["📤 4. Telegram Notification (Centralized)"]
+        D1["📲 Send Build Status, .deb List<br/>& Error Root Causes"]
     end
 
     subgraph Deploy["💻 Deployment & Installation"]
-        E1["🖥️ Ryzen 9 Workstation<br/><code>sudo apt install ./linux-*-ryzen9*.deb</code>"]
-        E2["💻 ThinkPad T440p<br/><code>sudo apt install ./linux-*-t440p*.deb</code>"]
+        E1["🖥️ Ryzen 9 Workstation<br/>sudo apt install ./linux-*-ryzen9*.deb"]
+        E2["💻 ThinkPad T440p<br/>sudo apt install ./linux-*-t440p*.deb"]
     end
 
-    Job1 -->|"prepared-kernel-source"| Job2
+    A6 -->|"needs: validate-config"| Job2
     Job2 -->|"compiled-kernel-artifacts-*"| Job3
-    Job3 --> Job4
-    Job2 -.->|"on failure"| Job4
+    Job3 -->|"on success"| Job4
+    Job2 -.->|"on build failure"| Job4
     C3 --> E1
     C3 --> E2
 
     style Job1 fill:#1a202c,stroke:#319795,color:#fff
+    style A5 fill:#742a2a,stroke:#e53e3e,color:#fff
+    style A6 fill:#22543d,stroke:#38a169,color:#fff
     style Job2 fill:#1a202c,stroke:#2b6cb0,color:#fff
     style MatrixRyzen fill:#233044,stroke:#4299e1,color:#fff
     style MatrixT440p fill:#233044,stroke:#4299e1,color:#fff
