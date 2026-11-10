@@ -19,13 +19,13 @@ system resources, and provides the fundamental services for all other software.
 ## Last build
 
 <p align="center">
-  <img width="968" alt="terminal-ryzen" src="https://github.com/user-attachments/assets/763d444f-0ffe-4823-ad42-348c2b0ec529" />
+  <img width="968" alt="terminal-ryzen" src="https://github.com/user-attachments/assets/93f90712-21f7-4e5e-8ada-e317f5841fd2" />
   <br />
   <sub>Build for AMD Ryzen 9 5950X.</sub>
 </p>
 
 <p align="center">
-  <img width="968" alt="terminal-t440p" src="https://github.com/user-attachments/assets/569470ca-4dc2-46ae-8f52-b7a2d399823d" />
+  <img width="968" alt="terminal-t440p" src="https://github.com/user-attachments/assets/57c8d55b-7929-45cb-86b5-0ee7462f37a4" />
   <br />
   <sub>Build for Lenovo ThinkPad T440p.</sub>
 </p>
