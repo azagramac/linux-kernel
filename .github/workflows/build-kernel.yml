@@ -449,14 +449,14 @@ jobs:
             fi
 
             mkdir -p validated_target
-            echo '${{ toJson(matrix.target) }}' > "validated_target/target.json"
+            echo '${{ toJson(matrix.target) }}' > "validated_target/target-${T_ID}.json"
           fi
 
       - name: 📤 Export validated target metadata
         uses: actions/upload-artifact@v7
         with:
           name: validated-target-${{ matrix.target.id }}
-          path: validated_target/target.json
+          path: validated_target/target-${{ matrix.target.id }}.json
 
   filter-targets:
     name: 🧩 1.5. Filter Approved Targets
