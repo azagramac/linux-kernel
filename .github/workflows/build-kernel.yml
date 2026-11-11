@@ -98,9 +98,14 @@ jobs:
             procps \
             sudo \
             ccache \
-            lz4
+            lz4 \
+            ca-certificates
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+
+          # Install Rust toolchain via rustup matching host environment
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
@@ -237,7 +242,7 @@ jobs:
           echo "========================================="
 
           # -------------------------------------------------------------
-          # Download Kernel source trees for validation
+          # Download pristine Kernel source trees for validation
           # -------------------------------------------------------------
           mkdir -p val_sources
           for item in $(echo "$MATRIX" | jq -r '.[] | @base64'); do
@@ -247,12 +252,12 @@ jobs:
             V_URL=$(_jq '.kernel_url')
             V_TAG=$(_jq '.git_tag')
 
-            SRC_DIR="val_sources/linux-${V_VER}"
-            if [ ! -d "$SRC_DIR" ]; then
-              echo "⬇️ Downloading kernel source for validation: ${V_VER}..."
-              mkdir -p "$SRC_DIR"
+            PRISTINE_DIR="val_sources/pristine_linux_${V_VER}"
+            if [ ! -d "$PRISTINE_DIR" ]; then
+              echo "⬇️ Downloading pristine kernel source for validation: ${V_VER}..."
+              mkdir -p "$PRISTINE_DIR"
               if [ "$V_METHOD" = "tag" ]; then
-                git clone --depth 1 --branch "$V_TAG" https://github.com/torvalds/linux "$SRC_DIR"
+                git clone --depth 1 --branch "$V_TAG" https://github.com/torvalds/linux "$PRISTINE_DIR"
               else
                 case "$(basename "$V_URL")" in
                   *.tar.gz) EXT="gz" ;;
@@ -271,7 +276,7 @@ jobs:
                     exit 1
                   fi
                 fi
-                tar -xf "$ARCHIVE" -C "$SRC_DIR" --strip-components=1
+                tar -xf "$ARCHIVE" -C "$PRISTINE_DIR" --strip-components=1
                 rm -f "$ARCHIVE"
               fi
             fi
@@ -279,6 +284,7 @@ jobs:
 
           # -------------------------------------------------------------
           # Perform olddefconfig check and diff detection for each target
+          # in its own dedicated, isolated directory (no shared trees)
           # -------------------------------------------------------------
           VALIDATION_FAILED=false
           SUMMARY_TABLE=""
@@ -291,17 +297,32 @@ jobs:
             T_NAME=$(_jq '.name')
             T_CFG=$(_jq '.config_path')
             T_VER=$(_jq '.kernel_version')
-            SRC_DIR="val_sources/linux-${T_VER}"
+            PRISTINE_DIR="val_sources/pristine_linux_${T_VER}"
+            TARGET_SRC="val_sources/target_${T_ID}_linux_${T_VER}"
+
+            echo "========================================="
+            echo "📁 Creating isolated source directory for $T_NAME..."
+            echo "Directory: $TARGET_SRC"
+            echo "========================================="
+            rm -rf "$TARGET_SRC"
+            cp -r "$PRISTINE_DIR" "$TARGET_SRC"
+
+            export PATH="$HOME/.cargo/bin:$PATH"
+            RUSTC_ARG=""
+            if grep -q "^CONFIG_RUSTC_VERSION=0" "$T_CFG"; then
+              RUSTC_ARG="RUSTC=no"
+            fi
 
             echo "========================================="
             echo "🔍 Testing olddefconfig for $T_NAME ($T_CFG)..."
+            echo "Directory: $TARGET_SRC"
             echo "========================================="
 
-            cp "$T_CFG" "$SRC_DIR/.config"
-            chmod -R +x "$SRC_DIR/scripts/" || true
+            cp "$T_CFG" "$TARGET_SRC/.config"
+            chmod -R +x "$TARGET_SRC/scripts/" || true
 
             set +e
-            OLDDEF_OUT=$(make -C "$SRC_DIR" olddefconfig 2>&1)
+            OLDDEF_OUT=$(make -C "$TARGET_SRC" $RUSTC_ARG olddefconfig 2>&1)
             OLDDEF_EXIT=$?
             set -e
 
@@ -310,10 +331,10 @@ jobs:
             DIFF_FILE="diff-${T_ID}.log"
             rm -f "$DIFF_FILE"
 
-            if [ -f "$SRC_DIR/scripts/diffconfig" ]; then
-              python3 "$SRC_DIR/scripts/diffconfig" "$T_CFG" "$SRC_DIR/.config" > "$DIFF_FILE" 2>/dev/null || true
+            if [ -f "$TARGET_SRC/scripts/diffconfig" ]; then
+              python3 "$TARGET_SRC/scripts/diffconfig" "$T_CFG" "$TARGET_SRC/.config" > "$DIFF_FILE" 2>/dev/null || true
             else
-              diff -u <(grep -E '^[A-Z0-9_]+=' "$T_CFG" | sort) <(grep -E '^[A-Z0-9_]+=' "$SRC_DIR/.config" | sort) > "$DIFF_FILE" || true
+              diff -u <(grep -E '^[A-Z0-9_]+=' "$T_CFG" | sort) <(grep -E '^[A-Z0-9_]+=' "$TARGET_SRC/.config" | sort) > "$DIFF_FILE" || true
             fi
 
             if [ "$OLDDEF_EXIT" -ne 0 ]; then
@@ -475,9 +496,14 @@ jobs:
             procps \
             sudo \
             ccache \
-            lz4
+            lz4 \
+            ca-certificates
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+
+          # Install Rust toolchain via rustup matching host environment
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
@@ -569,8 +595,14 @@ jobs:
           chmod -R +x scripts/
           find . -type f \( -name "*.sh" -o -name "*.pl" -o -name "*.py" \) -exec chmod +x {} +
 
+          export PATH="$HOME/.cargo/bin:$PATH"
+          RUSTC_ARG=""
+          if grep -q "^CONFIG_RUSTC_VERSION=0" .config; then
+            RUSTC_ARG="RUSTC=no"
+          fi
+
           echo "🔧 Running olddefconfig to prepare build tree headers..."
-          if ! make olddefconfig 2>&1 | tee ../build-config.log; then
+          if ! make $RUSTC_ARG olddefconfig 2>&1 | tee ../build-config.log; then
             mkdir -p ../artifacts
             cp ../build-config.log "../build-error-${{ matrix.target.id }}.log"
             cp ../build-config.log "../artifacts/build-error-${{ matrix.target.id }}.log"
@@ -632,9 +664,15 @@ jobs:
 
           rm -f "$BUILD_LOG" "$ERROR_LOG"
 
+          export PATH="$HOME/.cargo/bin:$PATH"
+          RUSTC_ARG=""
+          if grep -q "^CONFIG_RUSTC_VERSION=0" .config; then
+            RUSTC_ARG="RUSTC=no"
+          fi
+
           echo "🚀 Starting kernel compilation..."
 
-          if make -j$(nproc) bindeb-pkg \
+          if make -j$(nproc) bindeb-pkg $RUSTC_ARG \
               KCFLAGS="$KCFLAGS" \
               KCPPFLAGS="$KCPPFLAGS" \
               LOCALVERSION="$LOCAL_VER" \
