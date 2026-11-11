@@ -428,26 +428,6 @@ jobs:
               echo "> ✅ **Validation SUCCESSFUL (# No change to .config):** Configuration matches kernel requirements exactly. Target approved for compilation."
             } >> "$GITHUB_STEP_SUMMARY"
 
-            if [ -n "$TELEGRAM_TOKEN" ] && [ -n "$TELEGRAM_CHATID" ]; then
-              TG_OK_MSG=$(printf "%s\n" \
-                "<b>🐧 Linux Kernel: Configuration Verified ✅</b>" \
-                "" \
-                "🎯 <b>Device:</b> ${T_NAME}" \
-                "🏷️ <b>Version:</b> ${T_VER}" \
-                "📄 <b>Config:</b> <code>${T_CFG}</code>" \
-                "Result: <code># No change to .config</code>" \
-                "🚀 <i>Proceeding to compilation...</i>" \
-                "" \
-                "🔗 <a href=\"${RUN_URL}\">View run on GitHub Actions</a>")
-
-              curl -s -X POST \
-                "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-                --data-urlencode "chat_id=${TELEGRAM_CHATID}" \
-                --data-urlencode "parse_mode=HTML" \
-                --data-urlencode "text=$TG_OK_MSG" \
-                >/dev/null 2>&1 || true
-            fi
-
             mkdir -p validated_target
             echo '${{ toJson(matrix.target) }}' > "validated_target/target-${T_ID}.json"
           fi
