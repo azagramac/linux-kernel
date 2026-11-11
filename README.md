@@ -36,25 +36,40 @@ system resources, and provides the fundamental services for all other software.
 
 ```mermaid
 flowchart TD
-    subgraph Job1["🔍 1. Validate Kernel Config & Resolve Matrix (debian:trixie Container)"]
+    subgraph Job0["🎯 0. Resolve Targets Matrix (GitHub Runner)"]
+        A0["Target Selection (Ryzen 9 / T440p / Both)<br/>Resolve configs, URLs & target JSONs"]
+    end
+
+    subgraph Job1["🔍 1. Matrix Config Validation (debian:trixie Container per Runner)"]
         direction TB
-        A1["🎯 Target & Config Selection<br/>(Ryzen 9 / T440p / Both)"] --> A2["📦 Download Kernel Source & Kconfig Tools"]
-        A2 --> A3["⚙️ Execute make olddefconfig & scripts/diffconfig"]
-        A3 --> A4{"Changes in .config?"}
-        A4 -- "Yes (Modifications detected)" --> A5["📤 Telegram: Alert with Diff<br/>❌ Detailed Step Summary<br/>🛑 Abort Execution"]
-        A4 -- "No (100% Synchronized)" --> A6["✅ Config Validated<br/>🧩 Export Build Targets Matrix"]
+        subgraph ValRyzen["🖥️ Validation: AMD Ryzen 9"]
+            V1_R["📥 Download Kernel Source"] --> V2_R["⚙️ make olddefconfig"]
+            V2_R --> V3_R{"Changes in .config?"}
+            V3_R -- "Yes" --> V4_R["🛑 Abort Ryzen 9<br/>📤 Telegram Alert with Diff"]
+            V3_R -- "No" --> V5_R["✅ Approved Ryzen 9"]
+        end
+        subgraph ValT440p["💻 Validation: Lenovo T440p"]
+            V1_L["📥 Download Kernel Source"] --> V2_L["⚙️ make olddefconfig"]
+            V2_L --> V3_L{"Changes in .config?"}
+            V3_L -- "Yes" --> V4_L["🛑 Abort T440p<br/>📤 Telegram Alert with Diff"]
+            V3_L -- "No" --> V5_L["✅ Approved T440p"]
+        end
+    end
+
+    subgraph Job15["🧩 1.5. Filter Approved Targets"]
+        F1["Collect Approved Target Artifacts<br/>(Exclude Aborted Targets)"]
     end
 
     subgraph Job2["🐧 2. Matrix Build in Parallel (debian:trixie Container)"]
         direction TB
-        subgraph MatrixRyzen["🖥️ AMD Ryzen 9"]
+        subgraph MatrixRyzen["🖥️ Build: AMD Ryzen 9"]
             B1_R["🛠️ Toolchain gcc-14 + debian:trixie"]
             B2_R["📄 Apply Verified .config"]
             B3_R["🔑 Inject MOK Key (Secure Boot)"]
             B4_R["🐧 make bindeb-pkg<br/>KCFLAGS='-march=znver3 -O2'"]
             B1_R --> B2_R --> B3_R --> B4_R
         end
-        subgraph MatrixT440p["💻 Lenovo ThinkPad T440p"]
+        subgraph MatrixT440p["💻 Build: Lenovo ThinkPad T440p"]
             B1_L["🛠️ Toolchain gcc-14 + debian:trixie"]
             B2_L["📄 Apply Verified .config"]
             B3_L["🔑 Inject MOK Key (Secure Boot)"]
@@ -65,7 +80,7 @@ flowchart TD
 
     subgraph Job3["🚀 3. Publish Unified Release (GitHub Runner)"]
         direction TB
-        C1["📥 Download & Merge Artifacts<br/>(Ryzen 9 & T440p .deb packages)"]
+        C1["📥 Download & Merge Artifacts<br/>(Ryzen 9 and/or T440p .deb packages)"]
         C2["📝 Generate Unified Release Notes<br/>+ SHA256 Checksums & Step Summary"]
         C3["🏷️ Publish GitHub Release<br/>(tag: kernel-RUN_NUMBER)"]
         C1 --> C2 --> C3
@@ -80,16 +95,25 @@ flowchart TD
         E2["💻 ThinkPad T440p<br/>sudo apt install ./linux-*-t440p*.deb"]
     end
 
-    A6 -->|"needs: validate-config"| Job2
+    A0 --> Job1
+    V5_R --> F1
+    V5_L --> F1
+    F1 -->|"approved targets"| Job2
     Job2 -->|"compiled-kernel-artifacts-*"| Job3
     Job3 -->|"on success"| Job4
     Job2 -.->|"on build failure"| Job4
     C3 --> E1
     C3 --> E2
 
+    style Job0 fill:#1a202c,stroke:#718096,color:#fff
     style Job1 fill:#1a202c,stroke:#319795,color:#fff
-    style A5 fill:#742a2a,stroke:#e53e3e,color:#fff
-    style A6 fill:#22543d,stroke:#38a169,color:#fff
+    style ValRyzen fill:#233044,stroke:#4299e1,color:#fff
+    style ValT440p fill:#233044,stroke:#4299e1,color:#fff
+    style V4_R fill:#742a2a,stroke:#e53e3e,color:#fff
+    style V4_L fill:#742a2a,stroke:#e53e3e,color:#fff
+    style V5_R fill:#22543d,stroke:#38a169,color:#fff
+    style V5_L fill:#22543d,stroke:#38a169,color:#fff
+    style Job15 fill:#1a202c,stroke:#dd6b20,color:#fff
     style Job2 fill:#1a202c,stroke:#2b6cb0,color:#fff
     style MatrixRyzen fill:#233044,stroke:#4299e1,color:#fff
     style MatrixT440p fill:#233044,stroke:#4299e1,color:#fff
@@ -593,12 +617,12 @@ $ sudo dmesg | grep -Ei "certificate|keyring|asymmetric"
 ### 🐧 Kernel and Toolchain
 | Element             | Value               |
 | ------------------- | ------------------- |
-| Kernel              | 7.3-ryzen9          |
+| Kernel              | 7.3.4-ryzen9          |
 | Model               | SMP PREEMPT_DYNAMIC |
 | Base Distribution   | Debian 13           |
 | Compiler            | GCC 14.2.0          |
 | Target Architecture | Zen 3               |
-| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="amdgpu.ppfeaturemask=0xffffffff zswap.enabled=1 zswap.compressor=lzo efi=nodbx"` |
+| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="amdgpu.ppfeaturemask=0xffffffff fi=nodbx"` |
 
 ### 📦 Build Dependencies
 
@@ -778,7 +802,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 ### 🐧 Kernel & Hardware Specifications
 | Element | Value | Engineering Rationale |
 | :--- | :--- | :--- |
-| **Kernel Version** | `7.3-t440p` | Custom Linux kernel tuned for mobile Haswell architecture. |
+| **Kernel Version** | `7.3.4-t440p` | Custom Linux kernel tuned for mobile Haswell architecture. |
 | **Target CPU** | Intel Core i7-4700MQ | 4 cores / 8 threads (Haswell, 22nm, TDP 47W). |
 | **CPU Core Sizing** | `CONFIG_NR_CPUS=8` | Hardcapped to 8 exact threads, removing virtual CPU bitmap overhead. |
 | **Timer Tick Rate** | `250 Hz` (`CONFIG_HZ_250=y`) | Optimal thermal/battery balance for mobile Haswell; allows cores to reach deep C6/C7 sleep states. |
