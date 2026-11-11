@@ -19,8 +19,8 @@ on:
         options:
           - 'stable'
           - 'custom'
-          - 'configs/stable/config-7.3.3-ryzen9-debian13'
-          - 'configs/stable/config-7.3.3-t440p-debian13'
+          - 'configs/stable/config-7.3.4-ryzen9-debian13'
+          - 'configs/stable/config-7.3.4-t440p-debian13'
         default: 'stable'
       custom_config:
         description: '⚙️ Custom config path (used if config is "custom")'
