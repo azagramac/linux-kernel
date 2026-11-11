@@ -491,7 +491,7 @@ jobs:
             exit 1
           fi
 
-          MATRIX=$(jq -s '.' validated_targets/*.json)
+          MATRIX=$(jq -s -c '.' validated_targets/*.json)
           COUNT=$(echo "$MATRIX" | jq 'length')
           echo "build_matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "has_targets=true" >> "$GITHUB_OUTPUT"
