@@ -252,6 +252,9 @@ jobs:
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
           update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
 
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
       - name: 📥 Checkout repository
         uses: actions/checkout@v7
 
