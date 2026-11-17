@@ -19,13 +19,13 @@ system resources, and provides the fundamental services for all other software.
 ## Last build
 
 <p align="center">
-  <img width="968" alt="terminal-ryzen" src="https://github.com/user-attachments/assets/93f90712-21f7-4e5e-8ada-e317f5841fd2" />
+  <img width="968" alt="terminal-ryzen" src="https://github.com/user-attachments/assets/8d328b6a-bd36-4417-bd71-a65309aa573c" />
   <br />
   <sub>Build for AMD Ryzen 9 5950X.</sub>
 </p>
 
 <p align="center">
-  <img width="968" alt="terminal-t440p" src="https://github.com/user-attachments/assets/57c8d55b-7929-45cb-86b5-0ee7462f37a4" />
+  <img width="968" alt="terminal-t440p" src="https://github.com/user-attachments/assets/5ebc6ba8-521c-41bc-8807-8dceb3fa4825" />
   <br />
   <sub>Build for Lenovo ThinkPad T440p.</sub>
 </p>
@@ -376,7 +376,7 @@ After booting into the custom kernel, verify active optimizations using the foll
 #### Kernel version
 ```bash
 $ uname -a
-Linux ryzen 7.3.0-ryzen9 #ryzen9 SMP PREEMPT_DYNAMIC Sat Oct 31 08:27:58 CET 2026 x86_64 GNU/Linux
+Linux ryzen 7.3.5-ryzen9 #ryzen9 SMP PREEMPT_DYNAMIC Tue Nov 17 16:29:11 CET 2026 x86_64 GNU/Linux
 ```
 
 #### CPU topology
@@ -617,7 +617,7 @@ $ sudo dmesg | grep -Ei "certificate|keyring|asymmetric"
 ### 🐧 Kernel and Toolchain
 | Element             | Value               |
 | ------------------- | ------------------- |
-| Kernel              | 7.3.4-ryzen9          |
+| Kernel              | 7.3.5-ryzen9          |
 | Model               | SMP PREEMPT_DYNAMIC |
 | Base Distribution   | Debian 13           |
 | Compiler            | GCC 14.2.0          |
@@ -708,7 +708,6 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 ### 🎮 GPU APIs
 |        API        |     Versión      |               Driver                              |
 | ----------------- | ---------------- | ------------------------------------------------- |
-| **Kernel**        | `7.3-ryzen9`     | Custom Linux kernel                               |
 | **AMDGPU / DRM**  | `3.64`           | AMDGPU — AMD Radeon RX 6950 XT / NAVI21           |
 | **Vulkan**        | `1.4.309`        | RADV — Mesa `25.0.7-2+deb13u1`                    |
 | **OpenCL**        | `3.0`            | RustiCL — Mesa `25.0.7-2+deb13u1`                 |
@@ -802,7 +801,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 ### 🐧 Kernel & Hardware Specifications
 | Element | Value | Engineering Rationale |
 | :--- | :--- | :--- |
-| **Kernel Version** | `7.3.4-t440p` | Custom Linux kernel tuned for mobile Haswell architecture. |
+| **Kernel Version** | `7.3.5-t440p` | Custom Linux kernel tuned for mobile Haswell architecture. |
 | **Target CPU** | Intel Core i7-4700MQ | 4 cores / 8 threads (Haswell, 22nm, TDP 47W). |
 | **CPU Core Sizing** | `CONFIG_NR_CPUS=8` | Hardcapped to 8 exact threads, removing virtual CPU bitmap overhead. |
 | **Timer Tick Rate** | `250 Hz` (`CONFIG_HZ_250=y`) | Optimal thermal/battery balance for mobile Haswell; allows cores to reach deep C6/C7 sleep states. |
