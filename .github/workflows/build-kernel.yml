@@ -20,7 +20,7 @@ on:
           - 'stable'
           - 'custom'
           - 'configs/stable/config-7.3.5-ryzen9-debian13'
-          - 'configs/stable/config-7.3.5-t440p-debian13'
+          - 'configs/stable/config-6.19.14-t440p-debian13'
         default: 'stable'
       custom_config:
         description: '⚙️ Custom config path (used if config is "custom")'
