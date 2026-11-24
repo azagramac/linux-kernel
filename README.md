@@ -188,7 +188,7 @@ flowchart TD
 | **User Shadow Stack** | `CONFIG_X86_USER_SHADOW_STACK=y` | CET Shadow Stack for user-space return address protection. |
 | **eBPF Security (LSM)** | `CONFIG_BPF_LSM=y` / `CONFIG_BPF_JIT=y` | In-kernel eBPF Linux Security Module with eBPF JIT compiler enabled and active by default. |
 | **Stack Unwinder & Tracing**| `UNWINDER_ORC=y` / `CONFIG_DEBUG_INFO_NONE=y` | Low-overhead ORC call stack unwinding with stripped debug symbols for instant initramfs boot times and zero hang risk. |
-| **Module Cleanup (94%)** | 233 Essential Modules (`=m`) | Massive 94.2% reduction in loadable modules vs Debian stock (from 4,052 down to 233). Removed unused Intel/NVIDIA GPUs, unused network vendors, and TV/DVB cards. |
+| **Module Cleanup (95.2%)** | 194 Essential Modules (`=m`) / 1,963 Built-in (`=y`) | Massive 95.2% reduction in loadable modules (`4,051 → 194`) and 26.0% reduction in built-in options (`2,651 → 1,963`) vs Debian 13 stock (`6.12.118+deb13-amd64`). Removed unused Intel/NVIDIA GPUs, unused network vendors, and TV/DVB cards. |
 | **Signed Modules & Secure Boot**| `CONFIG_MODULE_SIG=y` / `CONFIG_SYSTEM_TRUSTED_KEYS` | Cryptographic signature validation for loadable modules (`SHA-256`) and full UEFI Secure Boot compatibility via MOK. |
 
 ---
@@ -197,13 +197,22 @@ flowchart TD
 
 This custom kernel build and CI/CD pipeline are specifically tuned for **this exact hardware**: AMD Ryzen 9 5950X (Zen 3) and AMD Radeon RX 6950 XT (RDNA 2) running on Debian 13.
 
-The guiding philosophy is **aggressive module & bloat removal (94.2% module reduction vs Debian stock, from 4,052 down to 233 essential modules) while retaining security, performance, and diagnostic capabilities**:
+The guiding philosophy is **aggressive module & bloat removal (95.2% module reduction vs Debian 13 stock `6.12.118+deb13-amd64`, from 4,051 down to 194 essential `=m` modules, and 26.0% fewer built-in `=y` options from 2,651 down to 1,963) while retaining security, performance, and diagnostic capabilities**:
 - 🔧 CPU-specific optimization (Zen 3, 32 threads, AMD pstate, PREEMPT, 1000 Hz)
 - 🎮 GPU-specific support (RDNA 2 / amdgpu module, ROCm, VRAM cgroups)
 - 🌐 Targeted network drivers only (Intel I211 `igb` + Intel 10GbE `ixgbe` + Intel AX210 `iwlwifi` / `btusb`)
 - 🔐 Security retained (all CPU mitigations, CET/IBT, BPF LSM)
 - 🔍 Diagnostics retained (Ftrace, Kprobes, Uprobes, ORC)
 - 🗑️ Hardware bloat removed (Intel GPU, NVIDIA, legacy Radeon, unused network vendors, legacy buses, TV/DVB)
+
+### 📊 Stock vs Custom Kernel Footprint (`6.12.118+deb13-amd64` vs `7.3.6-ryzen9`)
+
+| Metric | Debian 13 Stock (`6.12.118+deb13-amd64`) | Custom (`7.3.6-ryzen9`) | Difference | Reduction |
+| :--- | :---: | :---: | :---: | :---: |
+| **Loadable Modules (`=m`)** | `4,051` | `194` | `-3,857` | **-95.2%** |
+| **Built-in Options (`=y`)** | `2,651` | `1,963` | `-688` | **-26.0%** |
+| **Combined Active (`=m` + `=y`)** | `6,702` | `2,157` | `-4,545` | **-67.8%** |
+| **Total Enabled (`^CONFIG_`)** | `6,901` | `2,300` | `-4,601` | **-66.7%** |
 
 ### 🧹 1. Hardware Trimming & Bloat Elimination
 - **Non-AMD CPU Support Removed**: Disabled Intel, Hygon, Centaur, and Zhaoxin CPU support (`# CONFIG_CPU_SUP_INTEL is not set`, etc.) to streamline kernel execution paths.
@@ -248,7 +257,7 @@ The guiding philosophy is **aggressive module & bloat removal (94.2% module redu
 ### 🌐 5. Networking & Congestion Control
 - **TCP BBR Default**: Configured with **TCP BBR** as the default congestion control algorithm (`CONFIG_DEFAULT_TCP_CONG="bbr"`, `CONFIG_DEFAULT_BBR=y`). Eliminates bufferbloat and maximizes bandwidth throughput.
 - **Targeted Network Stack**: Includes Intel I211 (`igb`), Intel 10GbE (`ixgbe`), and Intel AX210 Wi-Fi 6E / Bluetooth 5.3 (`iwlwifi` / `btusb`).
-- **eBPF JIT & LSM**: JIT compiler enabled and active by default (`CONFIG_BPF_JIT=y`, `CONFIG_BPF_JIT_DEFAULT_ON=y`) alongside eBPF Security Module (`CONFIG_BPF_LSM=y`) for zero-overhead security hooks. `BPF_JIT_ALWAYS_ON` is intentionally not set, preserving runtime control via `net.core.bpf_jit_enable`.
+- **eBPF JIT & LSM**: JIT compiler permanently enabled (`CONFIG_BPF_JIT=y`, `CONFIG_BPF_JIT_DEFAULT_ON=y`, `CONFIG_BPF_JIT_ALWAYS_ON=y`) alongside eBPF Security Module (`CONFIG_BPF_LSM=y`) and unprivileged BPF disabled by default (`CONFIG_BPF_UNPRIV_DEFAULT_OFF=y`) for zero-overhead security hooks.
 - **`IO_URING_ZCRX`**: Zero-copy network reception (`CONFIG_IO_URING_ZCRX=y`) enabled for ultra-fast socket I/O.
 
 ### 💾 6. Memory Tuning (Zswap, ZRAM & Loop)
@@ -376,7 +385,7 @@ After booting into the custom kernel, verify active optimizations using the foll
 #### Kernel version
 ```bash
 $ uname -a
-Linux ryzen 7.3.5-ryzen9 #ryzen9 SMP PREEMPT_DYNAMIC Tue Nov 17 16:29:11 CET 2026 x86_64 GNU/Linux
+Linux ryzen 7.3.6-ryzen9 #ryzen9 SMP PREEMPT_DYNAMIC Mon Nov 23 17:22:13 CET 2026 x86_64 GNU/Linux
 ```
 
 #### CPU topology
@@ -488,8 +497,8 @@ CONFIG_CGROUP_DMEM=y
 ```bash
 $ grep -E "CONFIG_BPF_JIT" /boot/config-$(uname -r)
 CONFIG_BPF_JIT=y
+CONFIG_BPF_JIT_ALWAYS_ON=y
 CONFIG_BPF_JIT_DEFAULT_ON=y
-# CONFIG_BPF_JIT_ALWAYS_ON is not set
 ```
 
 #### USB Type-C & UCSI
@@ -517,14 +526,15 @@ $ sudo dmesg | grep -Ei "amdgpu|BAR|Resizable"
 The configuration embedded in the installed kernel can be extracted directly from the Debian package:
 
 ```bash
-$ dpkg-deb --fsys-tarfile linux-image-7.3-ryzen9_*.deb \
-  | tar -x ./boot/config-7.3-ryzen9 -O \
+$ dpkg-deb --fsys-tarfile linux-image-7.3.6-ryzen9_*.deb \
+  | tar -x ./boot/config-7.3.6-ryzen9 -O \
   | grep -E "CONFIG_(X86_NATIVE_CPU|NR_CPUS|PREEMPT|NO_HZ|BPF_JIT|CGROUP_DMEM|DRM_AMDGPU|HSA_AMD|TYPEC)"
 CONFIG_NO_HZ_IDLE=y
 CONFIG_PREEMPT_BUILD=y
 CONFIG_PREEMPT=y
 CONFIG_PREEMPT_DYNAMIC=y
 CONFIG_BPF_JIT=y
+CONFIG_BPF_JIT_ALWAYS_ON=y
 CONFIG_BPF_JIT_DEFAULT_ON=y
 CONFIG_NR_CPUS=32
 CONFIG_X86_NATIVE_CPU=y
@@ -617,12 +627,12 @@ $ sudo dmesg | grep -Ei "certificate|keyring|asymmetric"
 ### 🐧 Kernel and Toolchain
 | Element             | Value               |
 | ------------------- | ------------------- |
-| Kernel              | 7.3.5-ryzen9          |
+| Kernel              | 7.3.6-ryzen9          |
 | Model               | SMP PREEMPT_DYNAMIC |
 | Base Distribution   | Debian 13           |
 | Compiler            | GCC 14.2.0          |
 | Target Architecture | Zen 3               |
-| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="amdgpu.ppfeaturemask=0xffffffff fi=nodbx"` |
+| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="amdgpu.ppfeaturemask=0xffffffff efi=nodbx cpuidle.governor=teo"` |
 
 ### 📦 Build Dependencies
 
@@ -801,7 +811,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 ### 🐧 Kernel & Hardware Specifications
 | Element | Value | Engineering Rationale |
 | :--- | :--- | :--- |
-| **Kernel Version** | `7.3.5-t440p` | Custom Linux kernel tuned for mobile Haswell architecture. |
+| **Kernel Version** | `6.19.14-t440p` | Custom Linux kernel tuned for mobile Haswell architecture. |
 | **Target CPU** | Intel Core i7-4700MQ | 4 cores / 8 threads (Haswell, 22nm, TDP 47W). |
 | **CPU Core Sizing** | `CONFIG_NR_CPUS=8` | Hardcapped to 8 exact threads, removing virtual CPU bitmap overhead. |
 | **Timer Tick Rate** | `250 Hz` (`CONFIG_HZ_250=y`) | Optimal thermal/battery balance for mobile Haswell; allows cores to reach deep C6/C7 sleep states. |
@@ -812,5 +822,14 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | **USB xHCI Roles** | `CONFIG_USB_ROLE_SWITCH=m` / `CONFIG_USB_ROLES_INTEL_XHCI=m` | Hardware-accurate USB 3.0 role switching for Intel Lynx Point chipset. |
 | **Card Reader & Media** | `CONFIG_MMC=y` / `CONFIG_MMC_SDHCI_PCI=y` / `CONFIG_MEMSTICK=y` | Native Realtek/SDHCI PCI bus card reader and combo media stick support. |
 | **Touchpad & TrackPoint**| `CONFIG_RMI4_SMB=m` / `CONFIG_RMI4_F03=y` | Native Synaptics RMI4 over SMBus with TrackPoint guest pass-through, modern multi-touch, and hardware button support (`F11`/`F12`/`F30`). |
-| **Module Cleanup (94%)** | 255 Essential Modules (`=m`) | Massive 93.7% reduction in loadable modules vs Debian stock (from 4,052 down to 255). Stripped non-Intel GPUs, foreign wireless cards, and server controllers. |
+| **Module Cleanup (93.8%)** | 251 Essential Modules (`=m`) / 1,878 Built-in (`=y`) | Massive 93.8% reduction in loadable modules (`4,051 → 251`) and 29.2% reduction in built-in options (`2,651 → 1,878`) vs Debian 13 stock (`6.12.118+deb13-amd64`). Stripped non-Intel GPUs, foreign wireless cards, and server controllers. |
 | **Initramfs Safety** | `CONFIG_DEBUG_INFO_NONE=y` | Stripped debug/BTF symbols to eliminate boot stalls and initramfs deadlocks. |
+
+### 📊 Stock vs Custom Kernel Footprint (`6.12.118+deb13-amd64` vs `6.19.14-t440p`)
+
+| Metric | Debian 13 Stock (`6.12.118+deb13-amd64`) | Custom (`6.19.14-t440p`) | Difference | Reduction |
+| :--- | :---: | :---: | :---: | :---: |
+| **Loadable Modules (`=m`)** | `4,051` | `251` | `-3,800` | **-93.8%** |
+| **Built-in Options (`=y`)** | `2,651` | `1,878` | `-773` | **-29.2%** |
+| **Combined Active (`=m` + `=y`)** | `6,702` | `2,129` | `-4,573` | **-68.2%** |
+| **Total Enabled (`^CONFIG_`)** | `6,901` | `2,271` | `-4,630` | **-67.1%** |
