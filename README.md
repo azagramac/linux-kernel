@@ -98,7 +98,7 @@ flowchart TD
 | :--- | :--- | :--- |
 | **Native CPU Optimization** | `CONFIG_X86_NATIVE_CPU=y` + `KCFLAGS="-march=znver3"` | Two-layer native optimization: `X86_NATIVE_CPU` enables Kconfig host ISA feature detection; `-march=znver3` directs GCC to emit Zen 3-specific instructions (AVX2/BMI2/VAES). |
 | **CPU Core Sizing** | `CONFIG_NR_CPUS=32` | Hardcapped to 32 exact threads matching Ryzen 9 5950X, eliminating virtual CPU overhead. |
-| **CPU Frequency Scaling** | `amd-pstate` EPP (`CONFIG_X86_AMD_PSTATE=y`) | Hardware CPPC microsecond-level core frequency and voltage scaling (`X86_AMD_PSTATE_UT` disabled in production). |
+| **CPU Frequency Scaling** | `amd-pstate` EPP (`CONFIG_X86_AMD_PSTATE=y` + `CONFIG_CPU_FREQ_GOV_POWERSAVE=y`) | Hardware CPPC microsecond-level core frequency and voltage scaling in active EPP mode with `powersave` and `performance` governors (`# CONFIG_X86_AMD_PSTATE_UT is not set`). |
 | **NUMA Topology** | `CONFIG_NUMA=y` / `# CONFIG_NUMA_BALANCING is not set` | NUMA topology retained (`AMD_NUMA=y`, `X86_64_ACPI_NUMA=y`); automatic scan balancing disabled to eliminate overhead on single-node Ryzen systems. |
 | **Core Scheduling** | `CONFIG_SCHED_CORE=y` | SMT thread isolation and core scheduling for security and hyperthreading gaming performance. |
 
@@ -117,7 +117,8 @@ flowchart TD
 | **AMD Display Core** | `CONFIG_DRM_AMD_DC=y` / `CONFIG_DRM_AMD_DC_FP=y` | AMD Display Core with fast-path support for DCN 3.0 (Navi 21 / RX 6950 XT). |
 | **VRAM Cgroup Management**| `CONFIG_CGROUP_DMEM=y` | cgroups v2 Device Memory controller for dynamic VRAM resource allocation and priority control on `amdgpu`. |
 | **USB-C & DisplayPort AltMode** | `CONFIG_TYPEC=y` / `CONFIG_TYPEC_DP_ALTMODE=m` | Built-in USB Type-C connector subsystem with UCSI ACPI and DisplayPort Alternate Mode for USB-C monitors connected directly to the RX 6950 XT. |
-| **Heterogeneous Compute** | `CONFIG_HSA_AMD=y` / `CONFIG_DRM_AMDGPU_USERPTR=y` | Native AMD KFD driver for ROCm, Vulkan, OpenCL 3.0, and direct GPU user-pointer memory access. |
+| **Heterogeneous Compute** | `CONFIG_HSA_AMD=y` / `CONFIG_HSA_AMD_SVM=y` / `CONFIG_DEVICE_PRIVATE=y` / `CONFIG_DRM_AMDGPU_USERPTR=y` | Native AMD KFD driver with Shared Virtual Memory (SVM) for ROCm, Vulkan, OpenCL 3.0, and direct GPU user-pointer memory access. |
+| **Graphical Kernel Panic** | `CONFIG_DRM_PANIC=y` | Renders kernel panic diagnostics directly over `amdgpu` DRM output (`CONFIG_DRM_PANIC_SCREEN="user"`). |
 | **Legacy Radeon Removal** | `# CONFIG_DRM_RADEON is not set` | Legacy Radeon DRM driver disabled to ensure exclusive execution of the `amdgpu` driver stack. |
 
 ### 🌐 Networking, Sockets & Congestion Control
@@ -149,9 +150,10 @@ flowchart TD
 | Subsystem / Option | Kconfig Option | Engineering Rationale |
 | :--- | :--- | :--- |
 | **CPU Security Mitigations**| `CONFIG_CPU_MITIGATIONS=y` | Full AMD Zen 3 mitigation suite active: Spectre v1/v2, Retpoline, SRSO, Rethunk, SSB, IBPB entry, SLS, and TSA (`KPTI` disabled since AMD Zen 3 is unaffected by Meltdown). |
+| **User Shadow Stack (CET)** | `CONFIG_X86_CET=y` / `CONFIG_X86_USER_SHADOW_STACK=y` | Hardware CET Shadow Stack (`CET_SS`) for user-space ROP protection on AMD Zen 3 (`# CONFIG_X86_KERNEL_IBT is not set`, as Zen 3 lacks IBT). |
 | **eBPF Security (LSM)** | `CONFIG_BPF_LSM=y` / `CONFIG_BPF_JIT_ALWAYS_ON=y` | In-kernel eBPF Linux Security Module with eBPF JIT permanently enabled and unprivileged BPF disabled by default (`CONFIG_BPF_UNPRIV_DEFAULT_OFF=y`). |
 | **Stack Unwinder & Tracing**| `UNWINDER_ORC=y` / `CONFIG_DEBUG_INFO_NONE=y` | Low-overhead ORC call stack unwinding with stripped debug symbols for instant initramfs boot times and zero hang risk. |
-| **Module Cleanup (95.2%)** | 194 Essential Modules (`=m`) / 1,963 Built-in (`=y`) | Massive 95.2% reduction in loadable modules (`4,051 → 194`) and 26.0% reduction in built-in options (`2,651 → 1,963`) vs Debian 13 stock (`6.12.118+deb13-amd64`). Removed unused Intel/NVIDIA GPUs, unused network vendors, and TV/DVB cards. |
+| **Module Cleanup (95.2%)** | 193 Essential Modules (`=m`) / 1,967 Built-in (`=y`) | Massive 95.2% reduction in loadable modules (`4,051 → 193`) and 25.8% reduction in built-in options (`2,651 → 1,967`) vs Debian 13 stock (`6.12.118+deb13-amd64`). Removed unused Intel/NVIDIA GPUs, unused network vendors, and TV/DVB cards. |
 | **Signed Modules & Secure Boot**| `CONFIG_MODULE_SIG_FORCE=y` / `CONFIG_MODULE_SIG_ALL=y` | Mandatory cryptographic signature validation for loadable modules (`SHA-256`) and full UEFI Secure Boot compatibility via MOK. |
 
 ---
@@ -160,22 +162,41 @@ flowchart TD
 
 This custom kernel build and CI/CD pipeline are specifically tuned for **this exact hardware**: AMD Ryzen 9 5950X (Zen 3) and AMD Radeon RX 6950 XT (RDNA 2) running on Debian 13.
 
-The guiding philosophy is **aggressive module & bloat removal (95.2% module reduction vs Debian 13 stock `6.12.118+deb13-amd64`, from 4,051 down to 194 essential `=m` modules, and 26.0% fewer built-in `=y` options from 2,651 down to 1,963) while retaining security, performance, and diagnostic capabilities**:
-- 🔧 CPU-specific optimization (Zen 3, 32 threads, AMD pstate, PREEMPT, 1000 Hz)
-- 🎮 GPU-specific support (RDNA 2 / amdgpu module, ROCm, VRAM cgroups)
+The guiding philosophy is **aggressive module & bloat removal (95.2% module reduction vs Debian 13 stock `6.12.118+deb13-amd64`, from 4,051 down to 193 essential `=m` modules, and 25.8% fewer built-in `=y` options from 2,651 down to 1,967) while retaining security, performance, and diagnostic capabilities**:
+- 🔧 CPU-specific optimization (Zen 3, 32 threads, AMD pstate EPP, PREEMPT, 1000 Hz)
+- 🎮 GPU-specific support (RDNA 2 / amdgpu module, ROCm SVM, VRAM cgroups, DRM panic)
 - 🌐 Targeted network drivers only (Intel I211 `igb` + Intel 10GbE `ixgbe` + Intel AX210 `iwlwifi` / `btusb`)
-- 🔐 Security retained (all AMD Zen 3 CPU mitigations, BPF LSM, mandatory module signing)
+- 🔐 Security retained (all AMD Zen 3 CPU mitigations, CET User Shadow Stack, BPF LSM, mandatory module signing)
 - 🔍 Diagnostics retained (Ftrace, Kprobes, Uprobes, ORC)
-- 🗑️ Hardware bloat removed (Intel GPU, NVIDIA, legacy Radeon, unused network vendors, legacy buses, TV/DVB)
+- 🗑️ Hardware bloat removed (Intel GPU, NVIDIA, legacy Radeon, APU-only ISP/ACP, unused network vendors, legacy buses, TV/DVB)
 
 ### 📊 Stock vs Custom Kernel Footprint (`6.12.118+deb13-amd64` vs `7.3.6-ryzen9`)
 
 | Metric | Debian 13 Stock (`6.12.118+deb13-amd64`) | Custom (`7.3.6-ryzen9`) | Difference | Reduction |
 | :--- | :---: | :---: | :---: | :---: |
-| **Loadable Modules (`=m`)** | `4,051` | `194` | `-3,857` | **-95.2%** |
-| **Built-in Options (`=y`)** | `2,651` | `1,963` | `-688` | **-26.0%** |
-| **Combined Active (`=m` + `=y`)** | `6,702` | `2,157` | `-4,545` | **-67.8%** |
-| **Total Enabled (`^CONFIG_`)** | `6,901` | `2,300` | `-4,601` | **-66.7%** |
+| **Loadable Modules (`=m`)** | `4,051` | `193` | `-3,858` | **-95.2%** |
+| **Built-in Options (`=y`)** | `2,651` | `1,967` | `-684` | **-25.8%** |
+| **Combined Active (`=m` + `=y`)** | `6,702` | `2,160` | `-4,542` | **-67.8%** |
+| **Total Enabled (`^CONFIG_`)** | `6,901` | `2,306` | `-4,595` | **-66.6%** |
+
+### 🚀 Kernel Crypto API Benchmark (`cryptsetup` in-memory — Ryzen 9 5950X)
+
+Measured under identical conditions (`amd-pstate-epp` `performance` governor, THP `always`, `xts-aes-vaes-avx2`, 10 s per multi-thread run):
+
+| Benchmark | Debian 13 Stock (`6.12.118+deb13-amd64`) | Custom (`7.3.6-ryzen9`) | Delta | Gain |
+| :--- | :---: | :---: | :---: | :---: |
+| **AES-XTS-256 (1 thread, Encrypt)** | `5,169.7 MiB/s` | `5,550.0 MiB/s` | `+380.3 MiB/s` | **+7.4%** |
+| **AES-XTS-256 (1 thread, Decrypt)** | `5,155.4 MiB/s` | `5,542.6 MiB/s` | `+387.2 MiB/s` | **+7.5%** |
+| **AES-XTS-512 (1 thread, Encrypt)** | `4,844.6 MiB/s` | `5,154.4 MiB/s` | `+309.8 MiB/s` | **+6.4%** |
+| **AES-XTS-512 (1 thread, Decrypt)** | `4,829.1 MiB/s` | `5,145.1 MiB/s` | `+316.0 MiB/s` | **+6.5%** |
+| **AES-XTS-256 (32 threads, Encrypt)** | `78.5 GiB/s` | `84.0 GiB/s` | `+5.5 GiB/s` | **+7.0%** |
+| **AES-XTS-256 (32 threads, Decrypt)** | `78.1 GiB/s` | `83.8 GiB/s` | `+5.7 GiB/s` | **+7.3%** |
+| **AES-XTS-512 (32 threads, Encrypt)** | `72.3 GiB/s` | `75.9 GiB/s` | `+3.6 GiB/s` | **+5.0%** |
+| **AES-XTS-512 (32 threads, Decrypt)** | `72.1 GiB/s` | `76.0 GiB/s` | `+3.9 GiB/s` | **+5.4%** |
+| **PBKDF2-SHA256 (1 thread)** | `8,533,680 it/s` | `8,603,700 it/s` | `+70,020 it/s` | **+0.8%** |
+| **Argon2id LUKS (4T / 32T, 10 s)** | `77 / 91 iter` | `76 / 91 iter` | `~0` *(RAM-bound)* | — |
+| **Average / Peak Frequency** | `4,161 / 5,013 MHz` | `4,150 / 5,054 MHz` | `-11 / +41 MHz` | — |
+| **Peak Temperature** | `54.2 °C` | `53.1 °C` | `-1.1 °C` | **Cooler** |
 
 ### 🧹 1. Hardware Trimming & Bloat Elimination
 - **Non-AMD CPU Support Removed**: Disabled Intel, Hygon, Centaur, and Zhaoxin CPU support (`# CONFIG_CPU_SUP_INTEL is not set`, etc.) to streamline kernel execution paths.
@@ -203,17 +224,17 @@ The guiding philosophy is **aggressive module & bloat removal (95.2% module redu
   - Both flags are complementary and required for full native optimization; neither alone is sufficient.
 - **Core Scheduling**: Hardware SMT core scheduling enabled (`CONFIG_SCHED_CORE=y`) for thread isolation, security, and hyperthreading gaming performance.
 - **Sized Core Count**: Sized to `CONFIG_NR_CPUS=32` matching exact hardware threads, removing virtual CPU overhead.
-- **AMD P-State Driver**: Native `amd-pstate` CPPC driver with EPP enabled (`CONFIG_X86_AMD_PSTATE=y`) for microsecond-level frequency scaling (`# CONFIG_X86_AMD_PSTATE_UT is not set` in production).
+- **AMD P-State Driver**: Native `amd-pstate` CPPC driver in active EPP mode (`CONFIG_X86_AMD_PSTATE=y`, `CONFIG_X86_AMD_PSTATE_DEFAULT_MODE=3`) with `CONFIG_CPU_FREQ_GOV_POWERSAVE=y` and `CONFIG_CPU_FREQ_GOV_PERFORMANCE=y` for full dynamic EPP scaling (`# CONFIG_X86_AMD_PSTATE_UT is not set` in production).
 - **NUMA Infrastructure**: NUMA support is retained (`CONFIG_NUMA=y`, `CONFIG_AMD_NUMA=y`, `CONFIG_X86_64_ACPI_NUMA=y`) for correct hardware topology detection. Automatic NUMA balancing (`# CONFIG_NUMA_BALANCING is not set`) is disabled to eliminate background memory scan overhead on this single-node Ryzen system.
 - **High-Responsiveness EEVDF Scheduler**: Official Linux mainline EEVDF CPU scheduler tuned with `1000 Hz` tick rate (`CONFIG_HZ_1000=y`), `PREEMPT_DYNAMIC=y`, and interactive autogrouping (`CONFIG_SCHED_AUTOGROUP=y`). Note: `sched_ext` (SCX) and heavy BTF typeinfo are intentionally omitted (`CONFIG_DEBUG_INFO_NONE=y`) in production to completely eliminate initramfs hangs and boot stalls in Debian 13.
 
 ### 🎮 4. GPU & Display Core (Radeon RX 6950 XT / Navi 21)
 - **AMDGPU as Module**: `CONFIG_DRM_AMDGPU=m` — the AMDGPU driver is a loadable kernel module, not built into the kernel image. This is the standard Debian/upstream configuration for GPU drivers.
-- **Display Core (DCN 3.0)**: AMD Display Core enabled (`CONFIG_DRM_AMD_DC=y`) with fast-path support (`CONFIG_DRM_AMD_DC_FP=y`), optimized for Navi 21 / RDNA 2 architecture (DCN 3.0).
+- **Display Core (DCN 3.0)**: AMD Display Core enabled (`CONFIG_DRM_AMD_DC=y`) with fast-path support (`CONFIG_DRM_AMD_DC_FP=y`) and Secure Display (`CONFIG_DRM_AMD_SECURE_DISPLAY=y`), optimized for Navi 21 / RDNA 2 architecture (DCN 3.0). APU-only blocks (`# CONFIG_DRM_AMD_ISP is not set`, `# CONFIG_DRM_AMD_ACP is not set`) and `# CONFIG_DRM_AMDGPU_WERROR is not set` are disabled.
 - **USB Type-C & DisplayPort AltMode**: Native Type-C subsystem (`CONFIG_TYPEC=y`, `CONFIG_USB_COMMON=y`) with UCSI ACPI driver (`CONFIG_TYPEC_UCSI=y`, `CONFIG_UCSI_ACPI=y`) and DisplayPort Alternate Mode module (`CONFIG_TYPEC_DP_ALTMODE=m`) enabling direct USB-C monitor connectivity with zero video delay on boot.
-- **Additional AMDGPU features**: Audio CoProcessor (`CONFIG_DRM_AMD_ACP=y`), Secure Display (`CONFIG_DRM_AMD_SECURE_DISPLAY=y`), and ISP support (`CONFIG_DRM_AMD_ISP=y`) enabled.
-- **Heterogeneous Compute (ROCm / KFD)**: AMD HSA kernel driver (`CONFIG_HSA_AMD=y`) enabled for ROCm, Vulkan, and OpenCL compute.
+- **Heterogeneous Compute (ROCm / KFD + SVM)**: AMD HSA kernel driver (`CONFIG_HSA_AMD=y`) with Shared Virtual Memory (`CONFIG_DEVICE_PRIVATE=y`, `CONFIG_HSA_AMD_SVM=y`) enabled for ROCm, Vulkan, and OpenCL compute.
 - **Direct GPU Memory Access**: `CONFIG_DRM_AMDGPU_USERPTR=y` allowing GPU direct access to user space memory pointers.
+- **Graphical Kernel Panic**: `CONFIG_DRM_PANIC=y` (`CONFIG_DRM_PANIC_SCREEN="user"`) renders panic output directly on DRM displays.
 - **Resizable BAR & OverDrive**: Full 16 GB VRAM BAR access and OverDrive power limit unlocking (`amdgpu.ppfeaturemask=0xffffffff`).
 - **VRAM Cgroup Management (`CONFIG_CGROUP_DMEM=y`)**: Enabled cgroups v2 Device Memory controller for `amdgpu`, allowing dynamic VRAM priority allocation (`dmemcg-booster`) to eliminate stutter under heavy VRAM pressure.
 
@@ -234,6 +255,7 @@ The guiding philosophy is **aggressive module & bloat removal (95.2% module redu
 This kernel is **not** a "performance at all costs" build — all applicable AMD Zen 3 CPU security mitigations are retained:
 
 - **CPU Mitigations Enabled**: Full AMD Zen 3 mitigation suite active (`CONFIG_CPU_MITIGATIONS=y`), including Spectre v1/v2, Retpoline (`CONFIG_MITIGATION_RETPOLINE=y`), Rethunk (`CONFIG_MITIGATION_RETHUNK=y`), SRSO (`CONFIG_MITIGATION_SRSO=y`), SSB (`CONFIG_MITIGATION_SSB=y`), IBPB entry (`CONFIG_MITIGATION_IBPB_ENTRY=y`), SLS (`CONFIG_MITIGATION_SLS=y`), and TSA (`CONFIG_MITIGATION_TSA=y`).
+- **User Shadow Stack (CET)**: Hardware-enforced Shadow Stack enabled (`CONFIG_X86_CET=y`, `CONFIG_X86_USER_SHADOW_STACK=y`) for user-space ROP protection (`CET_SS` verified in silicon on Ryzen 9 5950X; `# CONFIG_X86_KERNEL_IBT is not set` since Zen 3 lacks IBT).
 - **No Unnecessary Meltdown KPTI Overhead on Zen 3**: `# CONFIG_MITIGATION_PAGE_TABLE_ISOLATION is not set` on the Ryzen 9 config (AMD Zen 3 is architecturally unaffected by Meltdown), whereas KPTI **remains enabled** (`CONFIG_MITIGATION_PAGE_TABLE_ISOLATION=y`) on the Intel Haswell ThinkPad T440p config.
 - **Kernel Hardening**: `kexec` compiled out (`# CONFIG_KEXEC is not set`), mandatory signed modules (`CONFIG_MODULE_SIG_FORCE=y`), strict `/dev/mem` (`CONFIG_STRICT_DEVMEM=y`, `CONFIG_IO_STRICT_DEVMEM=y`), and eBPF LSM (`CONFIG_BPF_LSM=y`, `CONFIG_BPF_UNPRIV_DEFAULT_OFF=y`).
 
