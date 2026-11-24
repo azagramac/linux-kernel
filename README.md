@@ -36,58 +36,37 @@ system resources, and provides the fundamental services for all other software.
 
 ```mermaid
 flowchart TD
-    subgraph Job0["🎯 0. Resolve Targets Matrix (GitHub Runner)"]
-        A0["Target Selection (Ryzen 9 / T440p / Both)<br/>Resolve configs, URLs & target JSONs"]
-    end
-
-    subgraph Job1["🔍 1. Matrix Config Validation (debian:trixie Container per Runner)"]
-        direction TB
-        subgraph ValRyzen["🖥️ Validation: AMD Ryzen 9"]
-            V1_R["📥 Download Kernel Source"] --> V2_R["⚙️ make olddefconfig"]
-            V2_R --> V3_R{"Changes in .config?"}
-            V3_R -- "Yes" --> V4_R["🛑 Abort Ryzen 9<br/>📤 Telegram Alert with Diff"]
-            V3_R -- "No" --> V5_R["✅ Approved Ryzen 9"]
-        end
-        subgraph ValT440p["💻 Validation: Lenovo T440p"]
-            V1_L["📥 Download Kernel Source"] --> V2_L["⚙️ make olddefconfig"]
-            V2_L --> V3_L{"Changes in .config?"}
-            V3_L -- "Yes" --> V4_L["🛑 Abort T440p<br/>📤 Telegram Alert with Diff"]
-            V3_L -- "No" --> V5_L["✅ Approved T440p"]
-        end
-    end
-
-    subgraph Job15["🧩 1.5. Filter Approved Targets"]
-        F1["Collect Approved Target Artifacts<br/>(Exclude Aborted Targets)"]
+    subgraph Job1["🎯 1. Resolve Targets & Verify Configs (ubuntu-latest)"]
+        A0["Target Selection (Ryzen 9 / T440p / Both)<br/>Resolve configs/stable, kernel versions & tarball URLs"]
     end
 
     subgraph Job2["🐧 2. Matrix Build in Parallel (debian:trixie Container)"]
         direction TB
-        subgraph MatrixRyzen["🖥️ Build: AMD Ryzen 9"]
-            B1_R["🛠️ Toolchain gcc-14 + debian:trixie"]
-            B2_R["📄 Apply Verified .config"]
-            B3_R["🔑 Inject MOK Key (Secure Boot)"]
-            B4_R["🐧 make bindeb-pkg<br/>KCFLAGS='-march=znver3 -O2'"]
-            B1_R --> B2_R --> B3_R --> B4_R
+        subgraph MatrixRyzen["🖥️ Build: AMD Ryzen 9 (7.3.6-ryzen9)"]
+            B1_R["🛠️ Toolchain gcc-14 + Rust + debian:trixie"]
+            B2_R["📥 Download Kernel Source & Apply .config + olddefconfig"]
+            B3_R["🔑 Inject MOK Key (certs/MOK-signing.pem)"]
+            B4_R["🐧 make bindeb-pkg<br/>KCFLAGS='-march=znver3 -O2 -pipe'"]
+            B5_R["🔒 Clean MOK Key & Upload Artifacts"]
+            B1_R --> B2_R --> B3_R --> B4_R --> B5_R
         end
-        subgraph MatrixT440p["💻 Build: Lenovo ThinkPad T440p"]
-            B1_L["🛠️ Toolchain gcc-14 + debian:trixie"]
-            B2_L["📄 Apply Verified .config"]
-            B3_L["🔑 Inject MOK Key (Secure Boot)"]
-            B4_L["🐧 make bindeb-pkg<br/>KCFLAGS='-march=haswell -O2'"]
-            B1_L --> B2_L --> B3_L --> B4_L
+        subgraph MatrixT440p["💻 Build: Lenovo ThinkPad T440p (6.19.14-t440p)"]
+            B1_L["🛠️ Toolchain gcc-14 + Rust + debian:trixie"]
+            B2_L["📥 Download Kernel Source & Apply .config + olddefconfig"]
+            B3_L["🔑 Inject MOK Key (certs/MOK-signing.pem)"]
+            B4_L["🐧 make bindeb-pkg<br/>KCFLAGS='-march=haswell -mtune=haswell -O2 -pipe'"]
+            B5_L["🔒 Clean MOK Key & Upload Artifacts"]
+            B1_L --> B2_L --> B3_L --> B4_L --> B5_L
         end
     end
 
-    subgraph Job3["🚀 3. Publish Unified Release (GitHub Runner)"]
+    subgraph Job3["🚀 3. Publish Release & Notify (ubuntu-latest)"]
         direction TB
-        C1["📥 Download & Merge Artifacts<br/>(Ryzen 9 and/or T440p .deb packages)"]
-        C2["📝 Generate Unified Release Notes<br/>+ SHA256 Checksums & Step Summary"]
-        C3["🏷️ Publish GitHub Release<br/>(tag: kernel-RUN_NUMBER)"]
-        C1 --> C2 --> C3
-    end
-
-    subgraph Job4["📤 4. Telegram Notification (Centralized)"]
-        D1["📲 Send Build Status, .deb List<br/>& Error Root Causes"]
+        C1["📥 Download & Merge Artifacts<br/>(.deb, .buildinfo, .changes, logs)"]
+        C2["📝 Generate Unified Release Notes + SHA-256"]
+        C3["🏷️ Publish GitHub Release (tag: kernel-RUN_NUMBER)"]
+        C4["📲 Send Telegram Notification (Status / Error Logs)"]
+        C1 --> C2 --> C3 --> C4
     end
 
     subgraph Deploy["💻 Deployment & Installation"]
@@ -95,30 +74,17 @@ flowchart TD
         E2["💻 ThinkPad T440p<br/>sudo apt install ./linux-*-t440p*.deb"]
     end
 
-    A0 --> Job1
-    V5_R --> F1
-    V5_L --> F1
-    F1 -->|"approved targets"| Job2
-    Job2 -->|"compiled-kernel-artifacts-*"| Job3
-    Job3 -->|"on success"| Job4
-    Job2 -.->|"on build failure"| Job4
+    A0 --> Job2
+    B5_R -->|"compiled-kernel-artifacts-ryzen9"| C1
+    B5_L -->|"compiled-kernel-artifacts-t440p"| C1
     C3 --> E1
     C3 --> E2
 
-    style Job0 fill:#1a202c,stroke:#718096,color:#fff
     style Job1 fill:#1a202c,stroke:#319795,color:#fff
-    style ValRyzen fill:#233044,stroke:#4299e1,color:#fff
-    style ValT440p fill:#233044,stroke:#4299e1,color:#fff
-    style V4_R fill:#742a2a,stroke:#e53e3e,color:#fff
-    style V4_L fill:#742a2a,stroke:#e53e3e,color:#fff
-    style V5_R fill:#22543d,stroke:#38a169,color:#fff
-    style V5_L fill:#22543d,stroke:#38a169,color:#fff
-    style Job15 fill:#1a202c,stroke:#dd6b20,color:#fff
     style Job2 fill:#1a202c,stroke:#2b6cb0,color:#fff
     style MatrixRyzen fill:#233044,stroke:#4299e1,color:#fff
     style MatrixT440p fill:#233044,stroke:#4299e1,color:#fff
     style Job3 fill:#1a202c,stroke:#805ad5,color:#fff
-    style Job4 fill:#1a202c,stroke:#38a169,color:#fff
     style Deploy fill:#2d3748,stroke:#ed8936,color:#fff
     style E1 fill:#dd6b20,stroke:#ed8936,color:#fff
     style E2 fill:#dd6b20,stroke:#ed8936,color:#fff
@@ -165,8 +131,7 @@ flowchart TD
 | Subsystem / Option | Kconfig Option | Engineering Rationale |
 | :--- | :--- | :--- |
 | **Multi-Gen LRU (MGLRU)** | `CONFIG_LRU_GEN=y` / `CONFIG_LRU_GEN_ENABLED=y` | Modern multi-generational LRU page reclamation with MMU walks (`CONFIG_LRU_GEN_WALKS_MMU=y`), minimizing page thrashing and memory pressure latency. |
-| **Memory / Zswap** | `CONFIG_ZSWAP=y` (`zswap.compressor=lzo`) | In-RAM compressed swap cache matching kernel boot parameters. |
-| **ZRAM Devices** | `CONFIG_ZRAM=y` (`zram.comp=lzo-rle`) | Compressed RAM block devices for high-performance dynamic swap. |
+| **ZRAM Devices** | `CONFIG_ZRAM=y` (`CONFIG_ZRAM_DEF_COMP="lz4"`) | Compressed RAM block devices with LZ4 default compression for high-performance dynamic swap (`# CONFIG_ZSWAP is not set`). |
 | **Loop & RAM Disk** | `CONFIG_BLK_DEV_LOOP=m` / `CONFIG_BLK_DEV_RAM=m` | Support for mounting ISO/disk images (`loop`) and RAM disk block devices. |
 | **Hugepages & Compaction** | `THP MADVISE` (`CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y`) | Transparent Hugepages default set to `madvise` with memory compaction to avoid bloat while enabling opt-in 2MB hugepages. |
 
@@ -174,7 +139,7 @@ flowchart TD
 | Subsystem / Option | Kconfig Option | Engineering Rationale |
 | :--- | :--- | :--- |
 | **Hi-Res Audio Driver** | `CONFIG_SND_HDA_CODEC_CA0132=m` | Dedicated CA0132 Sound Core3D ALSA codec module with DSP support for Sound Blaster Z 32-bit / 192 kHz audio. |
-| **PlayStation Controllers**| `CONFIG_HID_PLAYSTATION=m` / `CONFIG_PLAYSTATION_FF=y` | Sony DualSense (PS5) & DualShock 4 (PS4) controller support with haptic Force Feedback over USB and Bluetooth. |
+| **PlayStation Controllers**| `CONFIG_HID_PLAYSTATION=y` / `CONFIG_PLAYSTATION_FF=y` | Built-in Sony DualSense (PS5) & DualShock 4 (PS4) controller support with haptic Force Feedback over USB and Bluetooth. |
 | **Virtual User Input** | `CONFIG_INPUT_UINPUT=m` | User-space `/dev/uinput` interface for input emulation, virtual gamepads, and software remapping (Steam Input). |
 | **USB Webcams & Video** | `CONFIG_USB_VIDEO_CLASS=m` / `CONFIG_VIDEOBUF2_V4L2=m` | Video4Linux2 pipeline and UVC driver for USB webcams with physical evdev button support. |
 | **Legacy USB Webcams (GSPCA)** | `CONFIG_USB_GSPCA=m` / `CONFIG_USB_GSPCA_OV519=m` | GSPCA framework with OV519 subdriver for legacy Sony PlayStation 2 EyeToy (OV7630/OV7648) USB webcam support. |
@@ -183,13 +148,11 @@ flowchart TD
 ### 🔐 Security, Integrity & Diagnostics
 | Subsystem / Option | Kconfig Option | Engineering Rationale |
 | :--- | :--- | :--- |
-| **CPU Security Mitigations**| `CONFIG_CPU_MITIGATIONS=y` | Full Spectre, Meltdown, Retpoline, SRSO (Zen 3), RetBleed, and SSB CPU security mitigation suite active. |
-| **Control Flow Integrity**| `CONFIG_X86_CET=y` / `CONFIG_X86_KERNEL_IBT=y` | Hardware-enforced Indirect Branch Tracking for kernel control-flow integrity on Zen 3. |
-| **User Shadow Stack** | `CONFIG_X86_USER_SHADOW_STACK=y` | CET Shadow Stack for user-space return address protection. |
-| **eBPF Security (LSM)** | `CONFIG_BPF_LSM=y` / `CONFIG_BPF_JIT=y` | In-kernel eBPF Linux Security Module with eBPF JIT compiler enabled and active by default. |
+| **CPU Security Mitigations**| `CONFIG_CPU_MITIGATIONS=y` | Full AMD Zen 3 mitigation suite active: Spectre v1/v2, Retpoline, SRSO, Rethunk, SSB, IBPB entry, SLS, and TSA (`KPTI` disabled since AMD Zen 3 is unaffected by Meltdown). |
+| **eBPF Security (LSM)** | `CONFIG_BPF_LSM=y` / `CONFIG_BPF_JIT_ALWAYS_ON=y` | In-kernel eBPF Linux Security Module with eBPF JIT permanently enabled and unprivileged BPF disabled by default (`CONFIG_BPF_UNPRIV_DEFAULT_OFF=y`). |
 | **Stack Unwinder & Tracing**| `UNWINDER_ORC=y` / `CONFIG_DEBUG_INFO_NONE=y` | Low-overhead ORC call stack unwinding with stripped debug symbols for instant initramfs boot times and zero hang risk. |
 | **Module Cleanup (95.2%)** | 194 Essential Modules (`=m`) / 1,963 Built-in (`=y`) | Massive 95.2% reduction in loadable modules (`4,051 → 194`) and 26.0% reduction in built-in options (`2,651 → 1,963`) vs Debian 13 stock (`6.12.118+deb13-amd64`). Removed unused Intel/NVIDIA GPUs, unused network vendors, and TV/DVB cards. |
-| **Signed Modules & Secure Boot**| `CONFIG_MODULE_SIG=y` / `CONFIG_SYSTEM_TRUSTED_KEYS` | Cryptographic signature validation for loadable modules (`SHA-256`) and full UEFI Secure Boot compatibility via MOK. |
+| **Signed Modules & Secure Boot**| `CONFIG_MODULE_SIG_FORCE=y` / `CONFIG_MODULE_SIG_ALL=y` | Mandatory cryptographic signature validation for loadable modules (`SHA-256`) and full UEFI Secure Boot compatibility via MOK. |
 
 ---
 
@@ -201,7 +164,7 @@ The guiding philosophy is **aggressive module & bloat removal (95.2% module redu
 - 🔧 CPU-specific optimization (Zen 3, 32 threads, AMD pstate, PREEMPT, 1000 Hz)
 - 🎮 GPU-specific support (RDNA 2 / amdgpu module, ROCm, VRAM cgroups)
 - 🌐 Targeted network drivers only (Intel I211 `igb` + Intel 10GbE `ixgbe` + Intel AX210 `iwlwifi` / `btusb`)
-- 🔐 Security retained (all CPU mitigations, CET/IBT, BPF LSM)
+- 🔐 Security retained (all AMD Zen 3 CPU mitigations, BPF LSM, mandatory module signing)
 - 🔍 Diagnostics retained (Ftrace, Kprobes, Uprobes, ORC)
 - 🗑️ Hardware bloat removed (Intel GPU, NVIDIA, legacy Radeon, unused network vendors, legacy buses, TV/DVB)
 
@@ -222,14 +185,14 @@ The guiding philosophy is **aggressive module & bloat removal (95.2% module redu
 - **AMD IOMMU Isolation**: Native AMD Vi IOMMU driver enabled (`CONFIG_AMD_IOMMU=y`), while disabling unused Intel DMAR overhead (`# CONFIG_INTEL_IOMMU is not set`).
 - **Legacy Radeon Driver Disabled**: Legacy Radeon DRM driver disabled (`# CONFIG_DRM_RADEON is not set`), ensuring exclusive `amdgpu` driver stack execution.
 - **Legacy Controllers & Buses**: Removed floppy, parallel ports (`PARPORT`), PCMCIA/CardBus, FireWire (IEEE1394), ISDN, and analog modems, while retaining legacy USB host controllers (`CONFIG_USB_EHCI_HCD=m`, `CONFIG_USB_OHCI_HCD=m`, `CONFIG_USB_UHCI_HCD=m`) for full legacy USB 1.1/2.0 device compatibility.
-- **DVB & TV Capture Removal**: Disabled DVB digital/analog TV, SDR radio, and PCI capture cards (`# CONFIG_DVB_CORE is not set`, `# CONFIG_MEDIA_PCI_SUPPORT is not set`), while preserving USB webcam support (`CONFIG_USB_VIDEO_CLASS=m`, `CONFIG_UVC_COMMON=m`, `VIDEOBUF2`) and legacy GSPCA webcams (`CONFIG_USB_GSPCA=m`, `CONFIG_USB_GSPCA_OV519=m` for Sony PS2 EyeToy).
+- **DVB & TV Capture Removal**: Disabled DVB digital/analog TV, SDR radio, and PCI capture cards (`# CONFIG_MEDIA_DIGITAL_TV_SUPPORT is not set`, `# CONFIG_MEDIA_PCI_SUPPORT is not set`), while preserving USB webcam support (`CONFIG_USB_VIDEO_CLASS=m`, `CONFIG_UVC_COMMON=m`, `VIDEOBUF2`) and legacy GSPCA webcams (`CONFIG_USB_GSPCA=m`, `CONFIG_USB_GSPCA_OV519=m` for Sony PS2 EyeToy).
 
 ### ⏱️ 2. Low-Latency Tuning (Gaming & High-Res Audio)
 - **Full Preemption**: Full preemptible kernel (`CONFIG_PREEMPT_BUILD=y`, `CONFIG_PREEMPT=y`) for immediate task response and minimal audio/input latency.
 - **Timer Frequency (1000 Hz)**: Set timer frequency to `1000 Hz` (`CONFIG_HZ_1000=y`, `CONFIG_HZ=1000`) for precise event timing.
 - **Tickless Idle (`NO_HZ_IDLE`)**: Idle-tickless kernel (`CONFIG_NO_HZ_IDLE=y`) suppressing timer interrupts on idle CPUs, reducing wakeup overhead. Full tickless mode (`NO_HZ_FULL`) is intentionally not enabled to avoid scheduler complexity on this configuration.
 - **Hi-Res Audio Driver**: Dedicated Sound Blaster Z ALSA driver (`snd_ca0132` / Sound Core3D) configured for 32-bit / 192 kHz low-jitter audio.
-- **PlayStation DualSense & DualShock 4**: Dedicated Sony PlayStation HID driver (`CONFIG_HID_PLAYSTATION=m`, `CONFIG_PLAYSTATION_FF=y`) with full haptic Force Feedback for PS4/PS5 gamepads over USB and Bluetooth.
+- **PlayStation DualSense & DualShock 4**: Built-in Sony PlayStation HID driver (`CONFIG_HID_PLAYSTATION=y`, `CONFIG_PLAYSTATION_FF=y`) with full haptic Force Feedback for PS4/PS5 gamepads over USB and Bluetooth.
 - **Virtual User Input (`uinput`)**: Enabled `CONFIG_INPUT_UINPUT=m` for user-space input emulation (Steam Input, virtual gamepads, software controller remapping).
 - **Legacy USB Webcam (GSPCA/OV519)**: Enabled `CONFIG_USB_GSPCA=m` and `CONFIG_USB_GSPCA_OV519=m` for Sony PlayStation 2 EyeToy (OV7630/OV7648 sensor) support via the Video4Linux2 GSPCA framework.
 
@@ -260,67 +223,47 @@ The guiding philosophy is **aggressive module & bloat removal (95.2% module redu
 - **eBPF JIT & LSM**: JIT compiler permanently enabled (`CONFIG_BPF_JIT=y`, `CONFIG_BPF_JIT_DEFAULT_ON=y`, `CONFIG_BPF_JIT_ALWAYS_ON=y`) alongside eBPF Security Module (`CONFIG_BPF_LSM=y`) and unprivileged BPF disabled by default (`CONFIG_BPF_UNPRIV_DEFAULT_OFF=y`) for zero-overhead security hooks.
 - **`IO_URING_ZCRX`**: Zero-copy network reception (`CONFIG_IO_URING_ZCRX=y`) enabled for ultra-fast socket I/O.
 
-### 💾 6. Memory Tuning (Zswap, ZRAM & Loop)
+### 💾 6. Memory Tuning (MGLRU, ZRAM & Loop)
 - **Multi-Gen LRU (MGLRU)**: Multi-Generational Least Recently Used page reclamation (`CONFIG_LRU_GEN=y`, `CONFIG_LRU_GEN_ENABLED=y`, `CONFIG_LRU_GEN_WALKS_MMU=y`). Replaces legacy two-tier page reclamation with high-performance generational aging and page-table scanning, drastically reducing reclaim latency and memory thrashing under heavy loads.
-- **Zswap Storage**: Native `zswap` with `lzo` compressor (`CONFIG_ZSWAP=y`, `CONFIG_ZSWAP_COMPRESSOR_DEFAULT_LZO=y`) matching kernel boot parameters.
-- **ZRAM Compressed RAM Devices**: `CONFIG_ZRAM=y` (`zram.comp=lzo-rle`) enabled for compressed swap/RAM block devices.
+- **ZRAM Compressed RAM Devices**: Built-in `CONFIG_ZRAM=y` with LZ4 default compression (`CONFIG_ZRAM_DEF_COMP="lz4"`) for compressed swap/RAM block devices. `Zswap` is intentionally disabled (`# CONFIG_ZSWAP is not set`).
 - **Loop & RAM Disk Devices**: `CONFIG_BLK_DEV_LOOP=m` and `CONFIG_BLK_DEV_RAM=m` enabled for mounting disk images and loopback/RAM devices.
 - **Transparent Hugepages (`madvise`)**: Set THP default to `madvise` (`CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y`) alongside memory compaction (`CONFIG_COMPACTION=y`) to prevent system-wide memory bloat while enabling 2MB hugepages for opt-in applications (games, emulators, KVM).
 
-### 🛠️ 7. Diagnostics & Tracing Infrastructure
+### 🔐 7. CPU Security & Mitigations (Zen 3 / x86_64)
 
-> `CONFIG_DEBUG_KERNEL=y` is set intentionally. This enables the diagnostic/tracing infrastructure **without** heavyweight runtime overhead — KASAN, KFENCE, SLUB_DEBUG, DEBUG_VM, and lock validators are **not** set.
+This kernel is **not** a "performance at all costs" build — all applicable AMD Zen 3 CPU security mitigations are retained:
 
-- **ORC Unwinder & Hung Task Detection**: ORC stack unwinder (`CONFIG_UNWINDER_ORC=y`) and automatic 120s hung task detection (`CONFIG_DETECT_HUNG_TASK=y`).
-- **Scheduler Statistics**: Real-time scheduler statistics (`CONFIG_SCHEDSTATS=y`, `CONFIG_SCHED_INFO=y`) for performance profiling and `perf sched` analysis.
-- **Full Ftrace Suite**: Complete function tracing infrastructure (`CONFIG_FTRACE=y`, `CONFIG_FUNCTION_TRACER=y`, `CONFIG_FUNCTION_GRAPH_TRACER=y`, `CONFIG_DYNAMIC_FTRACE=y`, `CONFIG_STACK_TRACER=y`).
-- **Kernel Probes**: `CONFIG_KPROBE_EVENTS=y`, `CONFIG_UPROBE_EVENTS=y`, `CONFIG_BPF_EVENTS=y` — enabling `perf` and event-based tracing tools.
-- **Fast Initramfs Boot (No BTF Hangs)**: `CONFIG_DEBUG_INFO_NONE=y` — debug symbols and heavy BTF typeinfo are stripped from loadable modules. This completely eliminates initramfs parsing deadlocks and provides rapid, reliable booting.
-- **Block I/O Tracing**: `CONFIG_BLK_DEV_IO_TRACE=y` for `blktrace`/`blkparse` disk I/O analysis.
-- **Automated Workflow**: GitHub Actions workflow generating `.deb` packages with explicit `-march=znver3` flags and dynamic Git commit changelogs on GitHub Releases.
-
-### 🔐 8. CPU Security & Mitigations (Zen 3 / x86_64)
-
-This kernel is **not** a "performance at all costs" build — all CPU security mitigations are retained:
-
-- **CPU Mitigations Enabled**: Full mitigation suite active (`CONFIG_CPU_MITIGATIONS=y`), including Spectre v1/v2, Retpoline, SRSO (AMD-specific Zen), SSB, RetBleed, IBPB entry, SLS, and TSA.
-- **Page Table Isolation**: KPTI enabled (`CONFIG_MITIGATION_PAGE_TABLE_ISOLATION=y`) for Meltdown protection.
-- **AMD SRSO Mitigation**: Speculative Return Stack Overflow mitigation (`CONFIG_MITIGATION_SRSO=y`) — directly relevant for Zen 3 microarchitecture.
-- **Control Flow Integrity (CET/IBT)**: Hardware-enforced Indirect Branch Tracking enabled (`CONFIG_X86_CET=y`, `CONFIG_X86_KERNEL_IBT=y`) for kernel control-flow integrity.
-- **User Shadow Stack**: CET Shadow Stack for user-space enabled (`CONFIG_X86_USER_SHADOW_STACK=y`) for return address protection.
+- **CPU Mitigations Enabled**: Full AMD Zen 3 mitigation suite active (`CONFIG_CPU_MITIGATIONS=y`), including Spectre v1/v2, Retpoline (`CONFIG_MITIGATION_RETPOLINE=y`), Rethunk (`CONFIG_MITIGATION_RETHUNK=y`), SRSO (`CONFIG_MITIGATION_SRSO=y`), SSB (`CONFIG_MITIGATION_SSB=y`), IBPB entry (`CONFIG_MITIGATION_IBPB_ENTRY=y`), SLS (`CONFIG_MITIGATION_SLS=y`), and TSA (`CONFIG_MITIGATION_TSA=y`).
+- **No Unnecessary Meltdown KPTI Overhead on Zen 3**: `# CONFIG_MITIGATION_PAGE_TABLE_ISOLATION is not set` on the Ryzen 9 config (AMD Zen 3 is architecturally unaffected by Meltdown), whereas KPTI **remains enabled** (`CONFIG_MITIGATION_PAGE_TABLE_ISOLATION=y`) on the Intel Haswell ThinkPad T440p config.
+- **Kernel Hardening**: `kexec` compiled out (`# CONFIG_KEXEC is not set`), mandatory signed modules (`CONFIG_MODULE_SIG_FORCE=y`), strict `/dev/mem` (`CONFIG_STRICT_DEVMEM=y`, `CONFIG_IO_STRICT_DEVMEM=y`), and eBPF LSM (`CONFIG_BPF_LSM=y`, `CONFIG_BPF_UNPRIV_DEFAULT_OFF=y`).
 
 The security philosophy is **hardware/driver bloat removal** — not security regression.
 
+### 🔬 8. Diagnostics, Tracing & Observability
 
----
+> `CONFIG_DEBUG_KERNEL=y` is set intentionally. This enables the diagnostic/tracing infrastructure **without** heavyweight runtime overhead — KASAN, KFENCE, SLUB_DEBUG, DEBUG_VM, and lock validators are **not** set.
 
-### 🔬 9. Diagnostics, Tracing & Observability
+The project removes unnecessary runtime hardware support while deliberately retaining the infrastructure needed to diagnose and profile the system (`ftrace`, `perf`, `blktrace`, ORC unwinding, and hung-task/lockup detection):
 
-The kernel deliberately retains a comprehensive diagnostic and tracing stack.
-
-This is **intentional**: the project removes unnecessary runtime hardware support, while keeping the infrastructure needed to diagnose and profile the system.
-
-#### 🔍 Kernel Debug Infrastructure
-
-```
+#### 🔍 Kernel Debug & Fast Initramfs Boot
+```text
 CONFIG_DEBUG_KERNEL=y
 CONFIG_DEBUG_MISC=y
 CONFIG_DEBUG_INFO_NONE=y
 CONFIG_DYNAMIC_DEBUG=y
 CONFIG_DYNAMIC_DEBUG_CORE=y
+CONFIG_BLK_DEV_IO_TRACE=y
 ```
+`CONFIG_DEBUG_INFO_NONE=y` strips debug symbols and heavy BTF typeinfo from loadable modules, avoiding initramfs parsing stalls and keeping boot times fast on Debian 13.
 
 #### 📊 Scheduler Diagnostics
-
-```
+```text
 CONFIG_SCHED_INFO=y
 CONFIG_SCHEDSTATS=y
 CONFIG_LOCK_DEBUGGING_SUPPORT=y
 ```
-
 Heavy lock validation facilities are disabled:
-
-```
+```text
 # CONFIG_PROVE_LOCKING is not set
 # CONFIG_LOCK_STAT is not set
 # CONFIG_DEBUG_SPINLOCK is not set
@@ -328,13 +271,8 @@ Heavy lock validation facilities are disabled:
 # CONFIG_DEBUG_ATOMIC_SLEEP is not set
 ```
 
-This provides scheduler/diagnostic visibility without enabling the heavier debugging stack.
-
-#### 🔎 Ftrace
-
-The kernel retains a full Ftrace suite:
-
-```
+#### 🔎 Ftrace & Event Probes
+```text
 CONFIG_FTRACE=y
 CONFIG_FUNCTION_TRACER=y
 CONFIG_FUNCTION_GRAPH_TRACER=y
@@ -350,20 +288,10 @@ CONFIG_BPF_EVENTS=y
 CONFIG_DYNAMIC_EVENTS=y
 ```
 
-This enables advanced runtime tracing and profiling with tools like `ftrace`, `perf`, `bpftrace`, and `trace-cmd`.
-
-#### 🧭 ORC Unwinder
-
-```
+#### 🧭 ORC Unwinder & 🚨 Hung Task / Lockup Detection
+```text
 CONFIG_UNWINDER_ORC=y
 # CONFIG_UNWINDER_FRAME_POINTER is not set
-```
-
-The ORC unwinder provides efficient and accurate kernel stack unwinding for `perf` and `ftrace` call stacks.
-
-#### 🚨 Hung Task / Lockup Detection
-
-```
 CONFIG_LOCKUP_DETECTOR=y
 CONFIG_SOFTLOCKUP_DETECTOR=y
 CONFIG_HARDLOCKUP_DETECTOR=y
@@ -371,14 +299,9 @@ CONFIG_DETECT_HUNG_TASK=y
 CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=120
 ```
 
-The kernel detects:
-- soft lockups (NMI watchdog)
-- hard lockups (perf-based `HARDLOCKUP_DETECTOR_PERF`)
-- hung tasks (120 second default timeout)
-
 ---
 
-## 🔍 14. Post-Boot Verification
+## 🔍 Post-Boot Verification
 
 After booting into the custom kernel, verify active optimizations using the following commands.
 
@@ -443,19 +366,19 @@ $ sudo dmesg | grep -i "Detected VRAM"
 ```
 > Confirms full 16 GB Resizable BAR active on AMD Radeon RX 6950 XT.
 
-#### Zswap
+#### ZRAM
 ```bash
-$ cat /sys/module/zswap/parameters/enabled
-Y
-$ cat /sys/module/zswap/parameters/compressor
-lzo
+$ grep -E "CONFIG_ZRAM($|_DEF_COMP)|CONFIG_ZSWAP" /boot/config-$(uname -r)
+# CONFIG_ZSWAP is not set
+CONFIG_ZRAM=y
+CONFIG_ZRAM_DEF_COMP="lz4"
 ```
 
 #### AMDGPU
 ```bash
 $ sudo dmesg | grep -i amdgpu | head -30
-[    0.000000] Command line: BOOT_IMAGE=/vmlinuz-7.2.8-ryzen9 root=UUID=b6580fbd-f315-4df0-b934-da60ed1467e3 ro amdgpu.ppfeaturemask=0xffffffff zswap.enabled=1 zswap.compressor=lzo
-[    0.009148] Kernel command line: BOOT_IMAGE=/vmlinuz-7.2.8-ryzen9 root=UUID=b6580fbd-f315-4df0-b934-da60ed1467e3 ro amdgpu.ppfeaturemask=0xffffffff zswap.enabled=1 zswap.compressor=lzo
+[    0.000000] Command line: BOOT_IMAGE=/vmlinuz-7.3.6-ryzen9 root=/dev/mapper/debian_crypt-root ro amdgpu.ppfeaturemask=0xffffffff efi=nodbx cpuidle.governor=teo
+[    0.009148] Kernel command line: BOOT_IMAGE=/vmlinuz-7.3.6-ryzen9 root=/dev/mapper/debian_crypt-root ro amdgpu.ppfeaturemask=0xffffffff efi=nodbx cpuidle.governor=teo
 [    4.859534] amdgpu: unknown parameter 'si_support' ignored
 [    4.860323] amdgpu: unknown parameter 'cik_support' ignored
 [    4.866799] amdgpu: Virtual CRAT table created for CPU
@@ -513,15 +436,9 @@ $ grep CONFIG_UNWINDER_ORC /boot/config-$(uname -r)
 CONFIG_UNWINDER_ORC=y
 ```
 
-#### GPU / ReBAR
-```bash
-$ sudo dmesg | grep -Ei "amdgpu|BAR|Resizable"
-[    4.885241] amdgpu 0000:0d:00.0: [drm] Detected VRAM RAM=16368M, BAR=16384M
-```
-
 ---
 
-## 🧪 15. Kernel Configuration Verification
+## 🧪 Kernel Configuration Verification
 
 The configuration embedded in the installed kernel can be extracted directly from the Debian package:
 
@@ -547,7 +464,7 @@ This allows the packaged kernel to be verified independently of the source-tree 
 
 ---
 
-## 🔏 16. Secure Boot & MOK (Machine Owner Key) Enrollment
+## 🔏 Secure Boot & MOK (Machine Owner Key) Enrollment
 
 Both custom kernel variants (`-ryzen9` and `-t440p`) are cryptographically signed during the build pipeline (`CONFIG_MODULE_SIG=y`, `CONFIG_MODULE_SIG_ALL=y`, `CONFIG_SYSTEM_TRUSTED_KEYRING=y`). All compiled kernel modules (`.ko`) are signed with a private **Machine Owner Key (MOK)**.
 
@@ -641,7 +558,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
   libdw-dev libelf-dev libssl-dev libncurses-dev dwarves debhelper rsync python3 ccache curl jq patch kmod perl mawk tar xz-utils git
 ```
 
-| Paquete | Versión |
+| Package | Version |
 |---|---|
 | `build-essential` | `12.12` |
 | `gcc-14` | `14.2.0-19` |
@@ -814,7 +731,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | **Kernel Version** | `6.19.14-t440p` | Custom Linux kernel tuned for mobile Haswell architecture. |
 | **Target CPU** | Intel Core i7-4700MQ | 4 cores / 8 threads (Haswell, 22nm, TDP 47W). |
 | **CPU Core Sizing** | `CONFIG_NR_CPUS=8` | Hardcapped to 8 exact threads, removing virtual CPU bitmap overhead. |
-| **Timer Tick Rate** | `250 Hz` (`CONFIG_HZ_250=y`) | Optimal thermal/battery balance for mobile Haswell; allows cores to reach deep C6/C7 sleep states. |
+| **Timer Tick Rate** | `1000 Hz` (`CONFIG_HZ_1000=y`, `CONFIG_HZ=1000`) | High-resolution tick frequency matching the low-latency desktop profile (`CONFIG_NO_HZ_IDLE=y` allows idle cores to enter deep sleep states). |
 | **Preemption Model** | `CONFIG_PREEMPT_DYNAMIC=y` | Low-latency dynamic preemption for smooth desktop experience. |
 | **Integrated GPU** | `CONFIG_DRM_I915=m` | Intel HD Graphics 4600 driver module (exclusive; AMD/Nvidia removed). |
 | **PCIe ASPM Policy** | `CONFIG_PCIEASPM_DEFAULT=y` | BIOS-guided ASPM policy; prevents PCIe link timeouts (error -110) on Sierra Wireless EM7345 4G LTE modem and xHCI controllers. |
