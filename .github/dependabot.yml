@@ -1,12 +1,24 @@
 version: 2
 
 updates:
+  # The only ecosystem in this repo is GitHub Actions (build-kernel.yml uses
+  # actions/checkout, actions/upload-artifact, actions/download-artifact and
+  # softprops/action-gh-release). There are no Dockerfiles or package manifests.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    # Wait a few days after a release before proposing it (supply-chain safety:
+    # this workflow handles the MOK signing key and release publishing).
+    cooldown:
+      default-days: 7
+    # One PR per week with every action bump instead of one PR per action.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
     labels:
       - "dependencies"
       - "github-actions"

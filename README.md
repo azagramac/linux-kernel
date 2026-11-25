@@ -32,6 +32,64 @@ system resources, and provides the fundamental services for all other software.
 
 ---
 
+## 📂 Repository Layout & Configuration Files
+
+| Path | Content |
+| :--- | :--- |
+| `configs/stable/` | Configs used by the CI by default (the newest file per device). |
+| `configs/archive/` | Previous revisions kept for diffing / rollback (`6.19.14`, `7.3`, `7.3.1`, `7.3.3`, `7.3.4`, `7.3.5`; both devices). |
+| `configs/base/` | Debian 13 stock configs (`6.12.107`, `6.12.113`, `6.12.118+deb13-amd64`) used as the baseline for every footprint comparison. |
+| `changelogs/` | Upstream release notes per kernel version (`6.19.14`, `7.2.8`, `7.3`, `7.3.3`, `7.3.5`, `7.3.6`). |
+| `patchs/debian13-ryzen9.patch` | Historical `.config` diff (Debian stock `6.12.107` → `6.19.14`); not used by the CI workflow. |
+| `.github/workflows/build-kernel.yml` | Build, sign and release pipeline (see the diagram below). |
+
+### 📌 Current `configs/stable/` contents
+
+| Config file | Kernel | Loadable (`=m`) | Built-in (`=y`) | Total `CONFIG_` |
+| :--- | :---: | :---: | :---: | :---: |
+| `config-7.3.6-ryzen9-debian13` | `7.3.6` | `193` | `1,967` | `2,306` |
+| `config-6.19.14-t440p-debian13` | `6.19.14` | `251` | `1,878` | `2,271` |
+
+- The kernel version is taken from the **file name**; with `config = stable` the workflow picks the newest file per device (`sort -V`), so replacing a file in `configs/stable/` is enough to bump a target.
+- The T440p is currently pinned to the `6.19.14` config; the `7.3.x` T440p configs are kept in `configs/archive/`.
+- Both configs are generated with `gcc (Debian 14.2.0-19) 14.2.0`, compress modules with XZ (`CONFIG_MODULE_COMPRESS_XZ=y`) and sign them with `certs/MOK-signing.pem` (`CONFIG_MODULE_SIG_KEY`).
+
+The counters used across this README can be reproduced with:
+
+```bash
+f=configs/stable/config-7.3.6-ryzen9-debian13
+echo "m=$(grep -c '=m$' $f) y=$(grep -c '=y$' $f) total=$(grep -c '^CONFIG_' $f)"
+# m=193 y=1967 total=2306
+```
+
+### ⚖️ Per-device Configuration Differences
+
+| Area | AMD Ryzen 9 5950X (`7.3.6`) | Lenovo ThinkPad T440p (`6.19.14`) |
+| :--- | :--- | :--- |
+| **CPU count** | `CONFIG_NR_CPUS=32` | `CONFIG_NR_CPUS=8` |
+| **NUMA** | `CONFIG_NUMA=y` (`# CONFIG_NUMA_BALANCING is not set`) | `# CONFIG_NUMA is not set` |
+| **Frequency driver** | `amd-pstate` (`CONFIG_X86_AMD_PSTATE_DEFAULT_MODE=3`, active EPP) | `intel_pstate` (`CONFIG_X86_INTEL_PSTATE=y`) |
+| **Default cpufreq governor** | `schedutil` | `schedutil` |
+| **cpuidle governors** | `teo` + `menu` + `ladder` built (`cpuidle.governor=teo` on the cmdline) | `teo` only, with `CONFIG_INTEL_IDLE=y` |
+| **GPU** | `CONFIG_DRM_AMDGPU=m` (SI/CIK off) | `CONFIG_DRM_I915=m` |
+| **Graphical panic** | `CONFIG_DRM_PANIC=y` | `# CONFIG_DRM_PANIC is not set` |
+| **IOMMU** | `CONFIG_AMD_IOMMU=y` | none (`# CONFIG_INTEL_IOMMU is not set`) |
+| **USB Type-C** | `CONFIG_TYPEC=y` (UCSI ACPI + DP AltMode) | `# CONFIG_TYPEC is not set` |
+| **KVM** | `CONFIG_KVM_AMD=m` | `CONFIG_KVM_INTEL=m` |
+| **Wired / Wi-Fi** | `igb`, `igbvf`, `ixgbe`, `r8169`, `iwlwifi` | `e1000e`, `iwlwifi` (+ USB AX88179 / RTL8153 adapters) |
+| **Audio** | `CA0132` (Sound Blaster Z) + HDMI (ATI) | Realtek HDA codecs + HDMI (Intel); `# CONFIG_SND_HDA_CODEC_CA0132 is not set` |
+| **NVMe** | built-in (`CONFIG_BLK_DEV_NVME=y`) | module (`CONFIG_BLK_DEV_NVME=m`) |
+| **FireWire** | `CONFIG_FIREWIRE=m` / `FIREWIRE_OHCI=m` / `FIREWIRE_SBP2=m` | `# CONFIG_FIREWIRE is not set` |
+| **Meltdown / KPTI** | `# CONFIG_MITIGATION_PAGE_TABLE_ISOLATION is not set` | `CONFIG_MITIGATION_PAGE_TABLE_ISOLATION=y` |
+| **AMD-specific mitigations** | `RETHUNK`, `UNRET_ENTRY`, `IBPB_ENTRY`, `SRSO`, `RETBLEED`, `TSA` = `y` | `# CONFIG_MITIGATION_RETHUNK is not set`, `# CONFIG_MITIGATION_RETBLEED is not set` |
+| **Intel-specific mitigations** | — | `IBRS_ENTRY`, `MDS`, `TAA`, `L1TF`, `MMIO_STALE_DATA`, `SRBDS`, `GDS`, `RFDS`, `SPECTRE_BHI`, `VMSCAPE` = `y` |
+| **User shadow stack (CET)** | `CONFIG_X86_USER_SHADOW_STACK=y` | `# CONFIG_X86_USER_SHADOW_STACK is not set` |
+| **Platform extras** | `CONFIG_GIGABYTE_WMI=m` | `THINKPAD_ACPI`, `THINKPAD_LMI`, `SENSORS_HDAPS`, `INTEL_RAPL`, `X86_PKG_TEMP_THERMAL`, `INTEL_POWERCLAMP` |
+
+**Shared by both configs:** `CONFIG_PREEMPT_DYNAMIC=y`, `CONFIG_HZ_1000=y`, `CONFIG_NO_HZ_IDLE=y` (`NO_HZ_FULL` off), `CONFIG_X86_NATIVE_CPU=y`, `CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y`, BBR (`CONFIG_DEFAULT_TCP_CONG="bbr"`), MGLRU enabled, ZRAM with `lz4` (`ZSWAP` off), THP `madvise`, `CONFIG_SCHED_CORE=y` / `CONFIG_SCHED_AUTOGROUP=y`, `CONFIG_CGROUP_DMEM=y`, `CONFIG_IO_URING_ZCRX=y`, `CONFIG_MODULE_SIG_FORCE=y` (SHA-256), `CONFIG_BPF_LSM=y`, `CONFIG_STRICT_DEVMEM=y`, `kexec` compiled out, `CONFIG_DEBUG_INFO_NONE=y` and the same ftrace / kprobes / ORC diagnostics set.
+
+---
+
 ## 📌 Project Architecture & CI/CD Workflow
 
 ```mermaid
@@ -93,10 +151,12 @@ flowchart TD
 
 ## ⚡ Kernel Customization & Performance
 
+> The tables and numbered sections below document the **AMD Ryzen 9 5950X** config (`config-7.3.6-ryzen9-debian13`). The **Lenovo ThinkPad T440p** config has its own section at the end of this file.
+
 ### 🧠 CPU, Architecture & Topology
 | Subsystem / Option | Kconfig Option | Engineering Rationale |
 | :--- | :--- | :--- |
-| **Native CPU Optimization** | `CONFIG_X86_NATIVE_CPU=y` + `KCFLAGS="-march=znver3"` | Two-layer native optimization: `X86_NATIVE_CPU` enables Kconfig host ISA feature detection; `-march=znver3` directs GCC to emit Zen 3-specific instructions (AVX2/BMI2/VAES). |
+| **Native CPU Optimization** | `CONFIG_X86_NATIVE_CPU=y` + `KCFLAGS="-march=znver3 -O2 -pipe"` | Two-layer native optimization: `X86_NATIVE_CPU` enables Kconfig host ISA feature detection; `-march=znver3` directs GCC to emit Zen 3-specific instructions (AVX2/BMI2/VAES). |
 | **CPU Core Sizing** | `CONFIG_NR_CPUS=32` | Hardcapped to 32 exact threads matching Ryzen 9 5950X, eliminating virtual CPU overhead. |
 | **CPU Frequency Scaling** | `amd-pstate` EPP (`CONFIG_X86_AMD_PSTATE=y` + `CONFIG_CPU_FREQ_GOV_POWERSAVE=y`) | Hardware CPPC microsecond-level core frequency and voltage scaling in active EPP mode with `powersave` and `performance` governors (`# CONFIG_X86_AMD_PSTATE_UT is not set`). |
 | **NUMA Topology** | `CONFIG_NUMA=y` / `# CONFIG_NUMA_BALANCING is not set` | NUMA topology retained (`AMD_NUMA=y`, `X86_64_ACPI_NUMA=y`); automatic scan balancing disabled to eliminate overhead on single-node Ryzen systems. |
@@ -125,7 +185,7 @@ flowchart TD
 | Subsystem / Option | Kconfig Option | Engineering Rationale |
 | :--- | :--- | :--- |
 | **TCP Congestion** | **TCP BBR** (`CONFIG_DEFAULT_TCP_CONG="bbr"`) | Bottleneck bandwidth RTT pacing algorithm to prevent bufferbloat and latency spikes. |
-| **Targeted Network Stack** | `CONFIG_IGB=m` / `CONFIG_IXGBE=m` / `CONFIG_IWLWIFI=m` | Targeted Intel network stack: I211 Gigabit (`igb`), 10GbE (`ixgbe` + `libie`), and AX210 Wi-Fi 6E (`iwlwifi` / `btusb`). |
+| **Targeted Network Stack** | `CONFIG_IGB=m` / `CONFIG_IXGBE=m` / `CONFIG_IWLWIFI=m` | Targeted network stack: I211 Gigabit (`igb`), 10GbE (`ixgbe` + `libie_adminq` / `libie_fwlog`), Realtek `r8169`, and AX210 Wi-Fi 6E (`iwlwifi` / `btusb`). |
 | **Async Socket I/O** | `CONFIG_IO_URING_ZCRX=y` | Zero-copy packet reception for ultra-fast network socket I/O via `io_uring`. |
 
 ### 💾 Memory Management, ZRAM & Storage
@@ -160,12 +220,17 @@ flowchart TD
 
 ## 🛠️ Custom Kernel Optimizations & Performance Features
 
-This custom kernel build and CI/CD pipeline are specifically tuned for **this exact hardware**: AMD Ryzen 9 5950X (Zen 3) and AMD Radeon RX 6950 XT (RDNA 2) running on Debian 13.
+This custom kernel build and CI/CD pipeline are specifically tuned for **two exact machines**, both running Debian 13:
+
+- **Workstation:** AMD Ryzen 9 5950X (Zen 3) + AMD Radeon RX 6950 XT (RDNA 2) → `configs/stable/config-7.3.6-ryzen9-debian13`
+- **Laptop:** Lenovo ThinkPad T440p, Intel Core i7-4700MQ (Haswell) + Intel HD Graphics 4600 → `configs/stable/config-6.19.14-t440p-debian13`
+
+Sections 1–8 below document the **Ryzen 9** configuration; the T440p has its own section at the end. The same approach on the T440p gives a 93.8% module reduction (`4,051 → 251`) and 29.2% fewer built-in options (`2,651 → 1,878`).
 
 The guiding philosophy is **aggressive module & bloat removal (95.2% module reduction vs Debian 13 stock `6.12.118+deb13-amd64`, from 4,051 down to 193 essential `=m` modules, and 25.8% fewer built-in `=y` options from 2,651 down to 1,967) while retaining security, performance, and diagnostic capabilities**:
 - 🔧 CPU-specific optimization (Zen 3, 32 threads, AMD pstate EPP, PREEMPT, 1000 Hz)
 - 🎮 GPU-specific support (RDNA 2 / amdgpu module, ROCm SVM, VRAM cgroups, DRM panic)
-- 🌐 Targeted network drivers only (Intel I211 `igb` + Intel 10GbE `ixgbe` + Intel AX210 `iwlwifi` / `btusb`)
+- 🌐 Targeted network drivers only (Intel I211 `igb` + Intel 10GbE `ixgbe` + Intel AX210 `iwlwifi` / `btusb` + Realtek `r8169`)
 - 🔐 Security retained (all AMD Zen 3 CPU mitigations, CET User Shadow Stack, BPF LSM, mandatory module signing)
 - 🔍 Diagnostics retained (Ftrace, Kprobes, Uprobes, ORC)
 - 🗑️ Hardware bloat removed (Intel GPU, NVIDIA, legacy Radeon, APU-only ISP/ACP, unused network vendors, legacy buses, TV/DVB)
@@ -202,10 +267,10 @@ Measured under identical conditions (`amd-pstate-epp` `performance` governor, TH
 - **Non-AMD CPU Support Removed**: Disabled Intel, Hygon, Centaur, and Zhaoxin CPU support (`# CONFIG_CPU_SUP_INTEL is not set`, etc.) to streamline kernel execution paths.
 - **Unused GPU Drivers Removed**: Disabled Intel i915 (`# CONFIG_DRM_I915 is not set`) and Nvidia Nouveau (`# CONFIG_DRM_NOUVEAU is not set`).
 - **Legacy AMDGPU Generations Removed**: Disabled legacy Southern Islands (`SI`) and Sea Islands (`CIK`) support (`# CONFIG_DRM_AMDGPU_SI is not set`, `# CONFIG_DRM_AMDGPU_CIK is not set`), eliminating `si_support` / `cik_support` parameter warnings in `dmesg`.
-- **Targeted Wireless & Network Drivers**: Kept strictly **`iwlwifi`** (Intel AX210), **`igb`** (Intel I211 Gigabit), and **`ixgbe`** (Intel 10GbE), stripping unnecessary Realtek, Broadcom, Atheros, and Ralink wireless/ethernet drivers.
+- **Targeted Wireless & Network Drivers**: Kept **`iwlwifi`** (Intel AX210), **`igb`** (Intel I211 Gigabit) and **`ixgbe`** (Intel 10GbE), plus the Realtek **`r8169`** Ethernet module (`CONFIG_R8169=m`); Broadcom, Atheros, Ralink and Realtek wireless drivers are stripped.
 - **AMD IOMMU Isolation**: Native AMD Vi IOMMU driver enabled (`CONFIG_AMD_IOMMU=y`), while disabling unused Intel DMAR overhead (`# CONFIG_INTEL_IOMMU is not set`).
 - **Legacy Radeon Driver Disabled**: Legacy Radeon DRM driver disabled (`# CONFIG_DRM_RADEON is not set`), ensuring exclusive `amdgpu` driver stack execution.
-- **Legacy Controllers & Buses**: Removed floppy, parallel ports (`PARPORT`), PCMCIA/CardBus, FireWire (IEEE1394), ISDN, and analog modems, while retaining legacy USB host controllers (`CONFIG_USB_EHCI_HCD=m`, `CONFIG_USB_OHCI_HCD=m`, `CONFIG_USB_UHCI_HCD=m`) for full legacy USB 1.1/2.0 device compatibility.
+- **Legacy Controllers & Buses**: Removed floppy (`# CONFIG_BLK_DEV_FD is not set`), parallel ports (`# CONFIG_PARPORT is not set`), PCMCIA/CardBus (`# CONFIG_PCCARD is not set`), ISDN, and analog modems, while **keeping FireWire (IEEE1394) as modules** (`CONFIG_FIREWIRE=m`, `CONFIG_FIREWIRE_OHCI=m`, `CONFIG_FIREWIRE_SBP2=m`) and retaining legacy USB host controllers (`CONFIG_USB_EHCI_HCD=m`, `CONFIG_USB_OHCI_HCD=m`, `CONFIG_USB_UHCI_HCD=m`) for full legacy USB 1.1/2.0 device compatibility.
 - **DVB & TV Capture Removal**: Disabled DVB digital/analog TV, SDR radio, and PCI capture cards (`# CONFIG_MEDIA_DIGITAL_TV_SUPPORT is not set`, `# CONFIG_MEDIA_PCI_SUPPORT is not set`), while preserving USB webcam support (`CONFIG_USB_VIDEO_CLASS=m`, `CONFIG_UVC_COMMON=m`, `VIDEOBUF2`) and legacy GSPCA webcams (`CONFIG_USB_GSPCA=m`, `CONFIG_USB_GSPCA_OV519=m` for Sony PS2 EyeToy).
 
 ### ⏱️ 2. Low-Latency Tuning (Gaming & High-Res Audio)
@@ -220,7 +285,7 @@ Measured under identical conditions (`amd-pstate-epp` `performance` governor, TH
 ### 🧠 3. CPU Optimizations (AMD Ryzen 9 5950X — 16C / 32T)
 - **Native Architecture Compilation — two-layer optimization**:
   - `CONFIG_X86_NATIVE_CPU=y` — instructs Kconfig to probe the build host CPU and enable matching kernel features (e.g., VAES, AVX2 crypto paths, AMD-specific code paths).
-  - `KCFLAGS="-march=znver3"` — instructs GCC to emit Zen 3-specific instructions throughout the build. Set in the CI workflow (`make bindeb-pkg KCFLAGS="-march=znver3"`).
+  - `KCFLAGS="-march=znver3 -O2 -pipe"` (with `KCPPFLAGS="-march=znver3 -mtune=znver3"`) — instructs GCC to emit Zen 3-specific instructions throughout the build. Set in the CI workflow (`make bindeb-pkg KCFLAGS="-march=znver3 -O2 -pipe" KCPPFLAGS="-march=znver3 -mtune=znver3"`).
   - Both flags are complementary and required for full native optimization; neither alone is sufficient.
 - **Core Scheduling**: Hardware SMT core scheduling enabled (`CONFIG_SCHED_CORE=y`) for thread isolation, security, and hyperthreading gaming performance.
 - **Sized Core Count**: Sized to `CONFIG_NR_CPUS=32` matching exact hardware threads, removing virtual CPU overhead.
@@ -240,7 +305,7 @@ Measured under identical conditions (`amd-pstate-epp` `performance` governor, TH
 
 ### 🌐 5. Networking & Congestion Control
 - **TCP BBR Default**: Configured with **TCP BBR** as the default congestion control algorithm (`CONFIG_DEFAULT_TCP_CONG="bbr"`, `CONFIG_DEFAULT_BBR=y`). Eliminates bufferbloat and maximizes bandwidth throughput.
-- **Targeted Network Stack**: Includes Intel I211 (`igb`), Intel 10GbE (`ixgbe`), and Intel AX210 Wi-Fi 6E / Bluetooth 5.3 (`iwlwifi` / `btusb`).
+- **Targeted Network Stack**: Includes Intel I211 (`igb`), Intel 10GbE (`ixgbe`), Realtek `r8169`, and Intel AX210 Wi-Fi 6E / Bluetooth 5.3 (`iwlwifi` / `btusb`).
 - **eBPF JIT & LSM**: JIT compiler permanently enabled (`CONFIG_BPF_JIT=y`, `CONFIG_BPF_JIT_DEFAULT_ON=y`, `CONFIG_BPF_JIT_ALWAYS_ON=y`) alongside eBPF Security Module (`CONFIG_BPF_LSM=y`) and unprivileged BPF disabled by default (`CONFIG_BPF_UNPRIV_DEFAULT_OFF=y`) for zero-overhead security hooks.
 - **`IO_URING_ZCRX`**: Zero-copy network reception (`CONFIG_IO_URING_ZCRX=y`) enabled for ultra-fast socket I/O.
 
@@ -323,7 +388,7 @@ CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=120
 
 ---
 
-## 🔍 Post-Boot Verification
+## 🔍 Post-Boot Verification (AMD Ryzen 9)
 
 After booting into the custom kernel, verify active optimizations using the following commands.
 
@@ -460,7 +525,7 @@ CONFIG_UNWINDER_ORC=y
 
 ---
 
-## 🧪 Kernel Configuration Verification
+## 🧪 Kernel Configuration Verification (AMD Ryzen 9)
 
 The configuration embedded in the installed kernel can be extracted directly from the Debian package:
 
@@ -564,14 +629,17 @@ $ sudo dmesg | grep -Ei "certificate|keyring|asymmetric"
 ---
 
 ### 🐧 Kernel and Toolchain
-| Element             | Value               |
-| ------------------- | ------------------- |
-| Kernel              | 7.3.6-ryzen9          |
-| Model               | SMP PREEMPT_DYNAMIC |
-| Base Distribution   | Debian 13           |
-| Compiler            | GCC 14.2.0          |
-| Target Architecture | Zen 3               |
-| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="amdgpu.ppfeaturemask=0xffffffff efi=nodbx cpuidle.governor=teo"` |
+| Element             | AMD Ryzen 9 5950X | Lenovo ThinkPad T440p |
+| ------------------- | ----------------- | --------------------- |
+| Kernel              | `7.3.6-ryzen9`    | `6.19.14-t440p`       |
+| Config              | `configs/stable/config-7.3.6-ryzen9-debian13` | `configs/stable/config-6.19.14-t440p-debian13` |
+| Model               | SMP PREEMPT_DYNAMIC | SMP PREEMPT_DYNAMIC |
+| Base Distribution   | Debian 13         | Debian 13             |
+| Compiler            | GCC 14.2.0        | GCC 14.2.0            |
+| Target Architecture | Zen 3             | Haswell               |
+| `KCFLAGS`           | `-march=znver3 -O2 -pipe` | `-march=haswell -mtune=haswell -O2 -pipe` |
+| `KCPPFLAGS`         | `-march=znver3 -mtune=znver3` | `-march=haswell -mtune=haswell` |
+| Grub                | `GRUB_CMDLINE_LINUX_DEFAULT="amdgpu.ppfeaturemask=0xffffffff efi=nodbx cpuidle.governor=teo"` | — |
 
 ### 📦 Build Dependencies
 
@@ -655,7 +723,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | DRM/KMS       | Enabled               |
 
 ### 🎮 GPU APIs
-|        API        |     Versión      |               Driver                              |
+|        API        |     Version      |               Driver                              |
 | ----------------- | ---------------- | ------------------------------------------------- |
 | **AMDGPU / DRM**  | `3.64`           | AMDGPU — AMD Radeon RX 6950 XT / NAVI21           |
 | **Vulkan**        | `1.4.309`        | RADV — Mesa `25.0.7-2+deb13u1`                    |
@@ -750,7 +818,7 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 ### 🐧 Kernel & Hardware Specifications
 | Element | Value | Engineering Rationale |
 | :--- | :--- | :--- |
-| **Kernel Version** | `6.19.14-t440p` | Custom Linux kernel tuned for mobile Haswell architecture. |
+| **Kernel Version** | `6.19.14-t440p` | Custom Linux kernel tuned for mobile Haswell architecture (`configs/stable/config-6.19.14-t440p-debian13`; `7.3.x` T440p configs live in `configs/archive/`). Built with `KCFLAGS="-march=haswell -mtune=haswell -O2 -pipe"`. |
 | **Target CPU** | Intel Core i7-4700MQ | 4 cores / 8 threads (Haswell, 22nm, TDP 47W). |
 | **CPU Core Sizing** | `CONFIG_NR_CPUS=8` | Hardcapped to 8 exact threads, removing virtual CPU bitmap overhead. |
 | **Timer Tick Rate** | `1000 Hz` (`CONFIG_HZ_1000=y`, `CONFIG_HZ=1000`) | High-resolution tick frequency matching the low-latency desktop profile (`CONFIG_NO_HZ_IDLE=y` allows idle cores to enter deep sleep states). |
@@ -761,8 +829,20 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | **USB xHCI Roles** | `CONFIG_USB_ROLE_SWITCH=m` / `CONFIG_USB_ROLES_INTEL_XHCI=m` | Hardware-accurate USB 3.0 role switching for Intel Lynx Point chipset. |
 | **Card Reader & Media** | `CONFIG_MMC=y` / `CONFIG_MMC_SDHCI_PCI=y` / `CONFIG_MEMSTICK=y` | Native Realtek/SDHCI PCI bus card reader and combo media stick support. |
 | **Touchpad & TrackPoint**| `CONFIG_RMI4_SMB=m` / `CONFIG_RMI4_F03=y` | Native Synaptics RMI4 over SMBus with TrackPoint guest pass-through, modern multi-touch, and hardware button support (`F11`/`F12`/`F30`). |
-| **Module Cleanup (93.8%)** | 251 Essential Modules (`=m`) / 1,878 Built-in (`=y`) | Massive 93.8% reduction in loadable modules (`4,051 → 251`) and 29.2% reduction in built-in options (`2,651 → 1,878`) vs Debian 13 stock (`6.12.118+deb13-amd64`). Stripped non-Intel GPUs, foreign wireless cards, and server controllers. |
+| **Module Cleanup (93.8%)** | 251 Essential Modules (`=m`) / 1,878 Built-in (`=y`) | Massive 93.8% reduction in loadable modules (`4,051 → 251`) and 29.2% reduction in built-in options (`2,651 → 1,878`) vs Debian 13 stock (`6.12.118+deb13-amd64`). Stripped non-Intel GPUs, most foreign wireless cards (USB `ATH9K_HTC` is kept) and server controllers. |
 | **Initramfs Safety** | `CONFIG_DEBUG_INFO_NONE=y` | Stripped debug/BTF symbols to eliminate boot stalls and initramfs deadlocks. |
+| **CPU Frequency & Idle** | `CONFIG_X86_INTEL_PSTATE=y` / `CONFIG_INTEL_IDLE=y` / `CONFIG_CPU_IDLE_GOV_TEO=y` | `intel_pstate` driver (`# CONFIG_X86_ACPI_CPUFREQ is not set`) with `schedutil` as default governor; `teo` is the only cpuidle governor built. |
+| **Power & Thermal** | `CONFIG_THINKPAD_ACPI=m` / `CONFIG_INTEL_RAPL=m` / `CONFIG_X86_PKG_TEMP_THERMAL=m` / `CONFIG_INTEL_POWERCLAMP=m` | ThinkPad ACPI extras, RAPL power capping, package thermal and powerclamp; `CONFIG_SENSORS_HDAPS=m` and `CONFIG_THINKPAD_LMI=m` also built. |
+| **Single-node / No IOMMU / No Type-C** | `# CONFIG_NUMA` / `# CONFIG_INTEL_IOMMU` / `# CONFIG_TYPEC` not set | Features that a single-socket Haswell laptop without USB-C ports does not use. |
+| **Storage & Optical** | `CONFIG_SATA_AHCI=y` / `CONFIG_BLK_DEV_SR=m` / `CONFIG_UDF_FS=m` / `CONFIG_ISO9660_FS=m` | AHCI built in for SATA boot; optical drive (`sr_mod`) and disc filesystems (UDF / ISO 9660) as modules; NVMe kept as a module (`CONFIG_BLK_DEV_NVME=m`). |
+| **Wired, Wi-Fi & Bluetooth** | `CONFIG_E1000E=m` / `CONFIG_IWLWIFI=m` / `CONFIG_IWLMVM=m` / `CONFIG_BT_HCIBTUSB=m` | Intel Gigabit (`e1000e`), Intel Wi-Fi through `iwlmvm` (`# CONFIG_IWLDVM is not set`) and USB Bluetooth with `btintel`. |
+| **USB Network Adapters** | `CONFIG_USB_NET_AX88179_178A=m` / `CONFIG_USB_RTL8153_ECM=m` / `CONFIG_USB_NET_QMI_WWAN=m` / `CONFIG_USB_SIERRA_NET=m` | USB Ethernet dongles plus QMI / Sierra WWAN fallbacks next to the MBIM path; `CONFIG_USB_SERIAL_SIERRAWIRELESS=m` and `CONFIG_USB_SERIAL_OPTION=m` cover AT-command modes. |
+| **Audio** | `CONFIG_SND_HDA_INTEL=m` / `CONFIG_SND_HDA_CODEC_REALTEK=m` / `CONFIG_SND_HDA_CODEC_HDMI=m` | Realtek ALC codec family and HDMI audio over Intel graphics; Sound Blaster `CA0132` is not built. |
+| **Webcams** | `CONFIG_USB_VIDEO_CLASS=m` / `CONFIG_USB_GSPCA=m` / `CONFIG_USB_GSPCA_OV519=m` | UVC plus the legacy GSPCA OV519 driver, same as the Ryzen config. |
+| **Virtualization** | `CONFIG_KVM_INTEL=m` | KVM for Intel VT-x; `KVM_AMD` is not built and `# CONFIG_VFIO is not set`. |
+| **CPU Security Mitigations** | `CONFIG_MITIGATION_PAGE_TABLE_ISOLATION=y` / `IBRS_ENTRY` / `RETPOLINE` / `SLS` / `MDS` / `TAA` / `L1TF` / `MMIO_STALE_DATA` / `SRBDS` / `GDS` / `RFDS` / `SPECTRE_BHI` / `VMSCAPE` | Intel-side mitigation set enabled, including KPTI. `# CONFIG_MITIGATION_RETHUNK` and `# CONFIG_MITIGATION_RETBLEED` are not set in this config. |
+| **No CET Shadow Stack** | `# CONFIG_X86_USER_SHADOW_STACK is not set` | Haswell predates Control-flow Enforcement Technology, so the user shadow stack is disabled (it is enabled on the Zen 3 config). |
+| **Hardening (shared)** | `CONFIG_MODULE_SIG_FORCE=y` / `# CONFIG_KEXEC is not set` / `CONFIG_STRICT_DEVMEM=y` / `CONFIG_BPF_LSM=y` | Mandatory signed modules (SHA-256), `kexec` compiled out, strict `/dev/mem` and eBPF LSM, identical to the Ryzen build. |
 
 ### 📊 Stock vs Custom Kernel Footprint (`6.12.118+deb13-amd64` vs `6.19.14-t440p`)
 
@@ -772,3 +852,43 @@ sudo apt update && sudo apt install -y build-essential gcc-14 g++-14 fakeroot bc
 | **Built-in Options (`=y`)** | `2,651` | `1,878` | `-773` | **-29.2%** |
 | **Combined Active (`=m` + `=y`)** | `6,702` | `2,129` | `-4,573` | **-68.2%** |
 | **Total Enabled (`^CONFIG_`)** | `6,901` | `2,271` | `-4,630` | **-67.1%** |
+
+---
+
+### 🔍 T440p Verification
+
+The configuration embedded in the packaged kernel can be extracted and checked the same way as on the Ryzen build:
+
+```bash
+$ dpkg-deb --fsys-tarfile linux-image-6.19.14-t440p_*.deb \
+  | tar -x ./boot/config-6.19.14-t440p -O \
+  | grep -E "^CONFIG_(NR_CPUS|PREEMPT|PREEMPT_DYNAMIC|HZ_1000|NO_HZ_IDLE|X86_INTEL_PSTATE|DRM_I915|MITIGATION_PAGE_TABLE_ISOLATION|MODULE_SIG_FORCE)="
+CONFIG_NO_HZ_IDLE=y
+CONFIG_PREEMPT=y
+CONFIG_PREEMPT_DYNAMIC=y
+CONFIG_NR_CPUS=8
+CONFIG_HZ_1000=y
+CONFIG_MITIGATION_PAGE_TABLE_ISOLATION=y
+CONFIG_X86_INTEL_PSTATE=y
+CONFIG_MODULE_SIG_FORCE=y
+CONFIG_DRM_I915=m
+```
+
+Laptop-specific options:
+
+```bash
+$ grep -E "^CONFIG_(PCIEASPM_DEFAULT|USB_NET_CDC_MBIM|RMI4_SMB|BLK_DEV_SR|UDF_FS)=" /boot/config-$(uname -r)
+CONFIG_PCIEASPM_DEFAULT=y
+CONFIG_BLK_DEV_SR=m
+CONFIG_USB_NET_CDC_MBIM=m
+CONFIG_RMI4_SMB=m
+CONFIG_UDF_FS=m
+```
+
+CPU frequency driver (expected for this config: `intel_pstate`):
+
+```bash
+$ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver
+```
+
+The Secure Boot / MOK steps above apply unchanged to the `-t440p` packages.
