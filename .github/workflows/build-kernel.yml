@@ -19,7 +19,7 @@ on:
         options:
           - 'stable'
           - 'custom'
-          - 'configs/stable/config-7.3.5-ryzen9-debian13'
+          - 'configs/stable/config-7.3.6-ryzen9-debian13'
           - 'configs/stable/config-6.19.14-t440p-debian13'
         default: 'stable'
       custom_config:
