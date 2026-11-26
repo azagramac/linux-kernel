@@ -1047,7 +1047,8 @@ Measured under identical conditions (`amd-pstate-epp` `performance` governor, TH
 | Dimensions / Weight | 100.2 x 69.85 x 7.00 mm / 37.4 g |
 | Warranty | 5 years |
 | Controller / Driver | Intel 8 Series SATA AHCI `8086:8c03`, `ahci` (`CONFIG_SATA_AHCI=y`) |
-| Optical drive | [HL-DT-ST DVDRAM GUD0N](https://hitachi-lg.com/en/products/data.view/?v=21) (`sr0`, 24x; writes CD-R/RW, DVD-R and DVD-RAM and M-Disc; `CONFIG_BLK_DEV_SR=m`, UDF, ISO 9660) |
+| Optical drive | [HL-DT-ST DVDRAM GUD0N](https://hitachi-lg.com/en/products/data.view/?v=21) (`sr0`), slim 9.5 mm SATA Super Multi DVD writer, firmware revision `1.00` (as reported by the drive) |
+| Optical drive features | M-DISC support; the kernel reports CD-R/RW, DVD-R, DVD-RAM and MRW writing, 24x max speed (`CONFIG_BLK_DEV_SR=m`, UDF, ISO 9660) |
 
 #### 🎮 GPU
 | Component | Details |
