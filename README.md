@@ -1015,7 +1015,7 @@ Measured under identical conditions (`amd-pstate-epp` `performance` governor, TH
 | :--- | :--- |
 | Total Capacity | 16 GB (15 GiB usable) |
 | Configuration | 2 × 8 GB SO-DIMM: `ChannelA-DIMM0` and `ChannelB-DIMM0` (Dual Channel) |
-| Model | 2 × [Kingston HyperX Impact HX316LS9IB/8](https://www.kingston.com/hyperx) |
+| Model | 2 × [Kingston HyperX Impact HX316LS9IB/8](https://www.kingston.com/datasheets/HX316LS9IB_8.pdf) |
 | Type | DDR3L-1600, 204-pin SO-DIMM, unbuffered, non-ECC |
 | Organization | 1G x 64-bit, 2Rx8, sixteen 512M x 8 FBGA chips |
 | Speed | 1600 MT/s (PC3-12800); configured speed reported by `dmidecode`: 1600 MT/s |
@@ -1024,7 +1024,6 @@ Measured under identical conditions (`amd-pstate-epp` `performance` governor, TH
 | PnP profiles | DDR3-1600 CL9-9-9, DDR3-1333 CL8-8-8, DDR3-1066 CL6-6-6 |
 | Max capacity (SMBIOS) | 16 GB, 2 slots |
 | Bandwidth | up to 25.6 GB/s theoretical at 1600 MT/s (dual channel) |
-| Module height | 30.00 mm |
 | Operating temperature | 0 °C to 85 °C |
 
 > Intel's datasheet lists 16 GB as the maximum for two 2Rx8 SO-DIMMs (8 GB per module, one per channel), so this is the largest validated configuration. The same datasheet gives tCL 10/11 as the supported timing at DDR3L-1600 for this processor line; `dmidecode` (SMBIOS 2.7) confirms the 1600 MT/s speed but does not report the CAS timings that actually run.
@@ -1032,7 +1031,7 @@ Measured under identical conditions (`amd-pstate-epp` `performance` governor, TH
 #### 💿 Storage
 | Component | Details |
 | :--- | :--- |
-| SSD | [WD Blue 3D NAND SATA SSD](https://support.westerndigital.com) `WDS100T2B0A` (reported as `WDC WDS100T2B0A-00SM50`, firmware `411030WD`) |
+| SSD | [WD Blue 3D NAND SATA SSD](https://documents.sandisk.com/content/dam/asset-library/es_es/assets/public/western-digital/product/internal-drives/wd-blue-ssd/product-brief-wd-blue-3d-nand-sata-ssd.pdf) `WDS100T2B0A` (reported as `WDC WDS100T2B0A-00SM50`, firmware `411030WD`) |
 | Capacity | 1 TB (1,000,204,886,016 bytes, 931.5 GiB) |
 | Form Factor | 2.5" / 7 mm |
 | Interface | SATA III 6 Gb/s (link negotiated at 6.0 Gb/s; SATA 3.3, ACS-4) |
@@ -1048,7 +1047,7 @@ Measured under identical conditions (`amd-pstate-epp` `performance` governor, TH
 | Dimensions / Weight | 100.2 x 69.85 x 7.00 mm / 37.4 g |
 | Warranty | 5 years |
 | Controller / Driver | Intel 8 Series SATA AHCI `8086:8c03`, `ahci` (`CONFIG_SATA_AHCI=y`) |
-| Optical drive | HL-DT-ST DVDRAM GUD0N (`sr0`, 24x; writes CD-R/RW, DVD-R and DVD-RAM; `CONFIG_BLK_DEV_SR=m`, UDF, ISO 9660) |
+| Optical drive | [HL-DT-ST DVDRAM GUD0N](https://hitachi-lg.com/en/products/data.view/?v=21) (`sr0`, 24x; writes CD-R/RW, DVD-R and DVD-RAM and M-Disc; `CONFIG_BLK_DEV_SR=m`, UDF, ISO 9660) |
 
 #### 🎮 GPU
 | Component | Details |
